@@ -337,6 +337,19 @@
      later, remove this single rule. */
   #ttsSettings { display: none; }
 
+  /* Paragraph glyph (¶) inside the skip-back / skip-forward buttons when
+     a text-only track is loaded. Scaled up visually via transform so the
+     button's layout box stays at its existing size — the transform is
+     purely a paint-time effect, no impact on grid columns or row height. */
+  .para-glyph {
+    display: inline-block;
+    transform: scale(1.7);
+    transform-origin: center;
+    margin: 0 3px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+
   /* Maximize / minimize button — the unicode glyphs ⤢ / ⤡ rendered too
      small in the icon chip. Explicit-sized SVG icons inside keep the
      button.icon outer shape exactly the same (padding/font-size on the
@@ -929,7 +942,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.8';
+const APP_VERSION = '1.8.9';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)

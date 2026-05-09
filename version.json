@@ -1,5 +1,5 @@
 {
-  "version": "1.8.8",
+  "version": "1.8.9",
   "released": "2026-05-07",
-  "notes": "Fix paragraph-skip looping: tapping +¶ or -¶ during TTS playback used to leave the previous runTtsLoop alive concurrently with the new one — both incrementing the shared sentence index, which made the cursor jump several paragraphs per tap. Each TTS loop now captures a generation token; when startReading is called (from a paragraph skip or anywhere else), the token bumps and the previous loop exits at its next checkpoint. One tap = one paragraph jump."
+  "notes": "Paragraph glyph (¶) on the skip-back / skip-forward buttons is now visually scaled to 1.7× via transform, so it reads clearly inside the chip while the button itself stays exactly the same size (transforms don't affect layout)."
 }
