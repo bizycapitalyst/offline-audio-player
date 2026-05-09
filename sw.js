@@ -1,0 +1,82 @@
+/*
+ * Offline Audio Player - service worker
+ *
+ * Strategy:
+ *   - On install: pre-cache the shell (index.html, manifest, sw itself).
+ *   - On fetch: network-first for HTML / manifest / version.json so updates
+ *     reach the user as soon as they're online; cache fallback for offline.
+ *     Cache-first for static assets.
+ *   - On activate: drop old caches, claim clients immediately.
+ *
+ * Bump CACHE_VERSION whenever the shell changes; clients pick it up on next load.
+ */
+const CACHE_VERSION = 'v1';
+const CACHE = `offline-audio-player-${CACHE_VERSION}`;
+
+const SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE).then(cache => cache.addAll(SHELL)).catch(() => {})
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+
+  // Only handle same-origin requests; let cross-origin (e.g. version check) hit network.
+  if (url.origin !== self.location.origin) return;
+
+  const isShell =
+    req.mode === 'navigate' ||
+    url.pathname.endsWith('/') ||
+    url.pathname.endsWith('/index.html') ||
+    url.pathname.endsWith('/manifest.webmanifest') ||
+    url.pathname.endsWith('/version.json');
+
+  if (isShell){
+    // Network-first: pull updates eagerly when online; fall back to cache when not.
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req, { cache: 'no-store' });
+        const clone = fresh.clone();
+        caches.open(CACHE).then(c => c.put(req, clone)).catch(() => {});
+        return fresh;
+      } catch(_) {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        return caches.match('./index.html');
+      }
+    })());
+  } else {
+    // Cache-first for static assets.
+    event.respondWith((async () => {
+      const cached = await caches.match(req);
+      if (cached) return cached;
+      try {
+        const fresh = await fetch(req);
+        const clone = fresh.clone();
+        caches.open(CACHE).then(c => c.put(req, clone)).catch(() => {});
+        return fresh;
+      } catch(_) {
+        return cached || Response.error();
+      }
+    })());
+  }
+});

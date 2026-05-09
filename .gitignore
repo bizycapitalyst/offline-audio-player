@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Generated audio (keep prerender.py output OUT of the repo)
+*.mp3
+*.m4a
+*.wav
+*.ogg
+*.oga
+*.opus
+*.flac
+*.aac
+*.webm
+
+# Transcripts placed in this folder for testing
+test/
+sample/

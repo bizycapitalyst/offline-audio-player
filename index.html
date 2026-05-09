@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0e0e12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Offline Audio Player</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<style>
+  :root {
+    --bg: #0e0e12;
+    --panel: #17171f;
+    --panel-2: #1f1f2a;
+    --text: #e8e8ee;
+    --muted: #8a8aa0;
+    --accent: #7aa2ff;
+    --accent-2: #5b8cff;
+    --border: #2a2a38;
+    --good: #6cd28a;
+    --warn: #ffb86b;
+    --active: rgba(122, 162, 255, 0.18);
+    --active-bar: #7aa2ff;
+    --speak: rgba(108, 210, 138, 0.22);
+    --speak-bar: #6cd28a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  body.is-maximized { overflow: hidden; }
+  header.app-header {
+    padding: 16px 16px 8px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header.app-header h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+  .badge.update { background: var(--good); color: #0b1a10; cursor: pointer; }
+  main { padding: 14px; max-width: 760px; margin: 0 auto; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+  label.small { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  button, select {
+    font-family: inherit; font-size: 15px; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; width: 100%;
+    appearance: none; -webkit-appearance: none;
+  }
+  select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+  button { cursor: pointer; font-weight: 600; }
+  button.primary { background: linear-gradient(180deg, var(--accent), var(--accent-2)); border-color: transparent; color: #0b0e1a; }
+  button.primary:active { transform: translateY(1px); }
+  button.success { background: linear-gradient(180deg, #84e29c, #6cd28a); border-color: transparent; color: #0b1a10; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.icon { width: auto; padding: 8px 10px; font-size: 14px; font-weight: 500; }
+  button.icon.toggled { background: var(--accent); border-color: transparent; color: #0b0e1a; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .now-playing { font-size: 15px; font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+  audio { width: 100%; margin-top: 8px; }
+  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+  .controls button { padding: 12px 6px; font-size: 14px; }
+
+  .transcript-card { position: relative; }
+  .transcript-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .transcript-header .title { flex: 1; font-size: 12px; color: var(--muted); min-width: 100px; }
+  .transcript-header .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .read-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .read-bar button { font-size: 13px; padding: 9px 8px; }
+  .transcript {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px;
+    max-height: 50vh; overflow-y: auto;
+    line-height: 1.65; font-size: 15px;
+    scroll-behavior: smooth; position: relative;
+  }
+  .transcript-card.maximized {
+    position: fixed; inset: 0; z-index: 1000;
+    margin: 0; border-radius: 0; border: none;
+    padding: 12px; display: flex; flex-direction: column;
+    background: var(--panel);
+  }
+  .transcript-card.maximized .transcript { flex: 1; max-height: none; font-size: 17px; line-height: 1.75; }
+  .transcript-card.maximized .mini-controls { display: grid; }
+  .mini-controls { display: none; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+  .mini-controls button { padding: 12px 6px; font-size: 14px; }
+
+  .transcript h1, .transcript h2, .transcript h3 { line-height: 1.25; margin: 0.6em 0 0.4em; }
+  .transcript h1 { font-size: 1.3em; }
+  .transcript h2 { font-size: 1.15em; }
+  .transcript h3 { font-size: 1.05em; }
+  .transcript p, .transcript li, .transcript blockquote { margin: 0.4em 0; }
+  .transcript code { background: #000; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  .transcript pre { background: #000; padding: 10px; border-radius: 8px; overflow-x: auto; }
+  .transcript a { color: var(--accent); }
+  .transcript blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--muted); }
+  .transcript .ts-block { padding: 2px 8px; border-radius: 6px; transition: background 0.2s; }
+  .transcript .ts-block.active { background: var(--active); box-shadow: inset 3px 0 0 var(--active-bar); }
+  .transcript .ts-tag {
+    display: inline-block; font-size: 0.78em; color: var(--muted);
+    background: rgba(0,0,0,0.3); padding: 0px 6px; border-radius: 4px;
+    margin-right: 6px; font-variant-numeric: tabular-nums; cursor: pointer;
+  }
+  .transcript .ts-sentence { padding: 1px 2px; border-radius: 3px; cursor: pointer; transition: background 0.15s; }
+  .transcript .ts-sentence.speaking { background: var(--speak); box-shadow: inset 2px 0 0 var(--speak-bar); }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  .status { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+  .status.warn { color: var(--warn); }
+  .status.good { color: var(--good); }
+  details { margin-top: 8px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  details .help { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  details .help code { background: #000; padding: 1px 5px; border-radius: 4px; }
+  .speed-pill { display: inline-block; padding: 2px 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .resume-pill {
+    position: absolute; bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent); color: #0b0e1a;
+    padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5); border: none;
+    width: auto; z-index: 5;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .resume-pill.show { opacity: 1; pointer-events: auto; }
+  .voice-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; margin-top: 8px; }
+  .voice-row label { font-size: 12px; color: var(--muted); }
+  .slider-row { display: grid; grid-template-columns: 70px 1fr 36px; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .slider-row input[type=range] { width: 100%; accent-color: var(--accent); }
+  .bg-note { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+  .bg-note code { background: #000; padding: 1px 5px; border-radius: 4px; }
+  .version-line { font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .version-line button { width: auto; padding: 4px 10px; font-size: 11px; font-weight: 500; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Offline Audio Player</h1>
+    <span class="badge" id="modeBadge">offline-ready</span>
+  </header>
+  <main>
+    <div class="card" id="folderCard">
+      <label class="small">1. Choose the folder containing your audio files</label>
+      <div class="row">
+        <button class="primary" id="pickFolderBtn">Pick folder</button>
+        <button id="rescanBtn" disabled>Rescan</button>
+      </div>
+      <input type="file" id="fallbackInput" webkitdirectory directory multiple style="display:none" accept="audio/*,.txt,.md,.markdown">
+      <div class="status" id="folderStatus">No folder selected. Tap "Pick folder" and select your audio folder.</div>
+      <details>
+        <summary>How this works / tips</summary>
+        <div class="help">
+          • Tap <b>Pick folder</b> and select the folder containing your audio + transcript files.<br>
+          • Audio (mp3, m4a, wav, ogg, opus, flac, aac, webm) and matching <code>.txt</code>/<code>.md</code> transcripts (same base name) auto-pair.<br>
+          • <b>Timestamp sync:</b> if transcript lines start with timestamps like <code>[00:01:23]</code>, the transcript scrolls line-by-line. Tap a timestamp to jump.<br>
+          • <b>True background playback (screen off):</b> works for any audio file. For text-only transcripts, run the included <code>prerender.py</code> on your PC to generate a paired MP3 — then it plays in background like any other audio.<br>
+          • <b>Read aloud (in-browser TTS)</b> uses the browser speech engine; fine while the screen is on, but most mobile browsers <b>pause it when backgrounded</b>. Pre-render is the workaround.
+        </div>
+      </details>
+      <div class="version-line">
+        <span id="versionLine">v<span id="appVersion">…</span></span>
+        <button id="updateBtn">Check for updates</button>
+      </div>
+    </div>
+
+    <div class="card" id="trackCard">
+      <label class="small">2. Pick a track</label>
+      <select id="trackSelect" disabled>
+        <option value="">— No tracks loaded —</option>
+      </select>
+      <div class="meta">
+        <span id="trackCount">0 audio</span>
+        <span id="transcriptCount">0 transcripts</span>
+      </div>
+    </div>
+
+    <div class="card" id="playerCard">
+      <div class="now-playing" id="nowPlaying">Nothing playing</div>
+      <audio id="audioEl" controls preload="metadata" playsinline></audio>
+      <div class="controls">
+        <button id="prevBtn" title="Previous">⏮</button>
+        <button id="back15Btn" title="Back 15s">−15s</button>
+        <button id="playPauseBtn" class="primary" title="Play/Pause">▶</button>
+        <button id="fwd15Btn" title="Forward 15s">+15s</button>
+        <button id="nextBtn" title="Next">⏭</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
+        <button id="loopBtn">Loop: Off</button>
+      </div>
+    </div>
+
+    <div class="card transcript-card" id="transcriptCard">
+      <div class="transcript-header">
+        <span class="title" id="transcriptTitle">Transcript</span>
+        <div class="actions">
+          <button class="icon toggled" id="followBtn" title="Auto-scroll with audio">Follow ✓</button>
+          <button class="icon" id="maximizeBtn" title="Maximize transcript">⤢</button>
+        </div>
+      </div>
+      <div class="read-bar">
+        <button id="readBtn" class="success" title="Read aloud (US English TTS, foreground only)">🗣 Read Aloud</button>
+        <button id="readPauseBtn" disabled title="Pause/Resume reading">⏸</button>
+        <button id="readStopBtn" disabled title="Stop reading">⏹</button>
+      </div>
+      <div class="transcript" id="transcript">
+        <div class="empty">No transcript loaded.</div>
+      </div>
+      <details id="ttsSettings">
+        <summary>TTS voice & pacing</summary>
+        <div class="voice-row">
+          <label for="voiceSelect">Voice</label>
+          <select id="voiceSelect"><option value="">(loading…)</option></select>
+        </div>
+        <div class="slider-row">
+          <label for="rateSlider">Rate</label>
+          <input type="range" id="rateSlider" min="0.7" max="1.3" step="0.05" value="0.95">
+          <span id="rateVal">0.95×</span>
+        </div>
+        <div class="slider-row">
+          <label for="pitchSlider">Pitch</label>
+          <input type="range" id="pitchSlider" min="0.8" max="1.2" step="0.05" value="1.00">
+          <span id="pitchVal">1.00</span>
+        </div>
+        <div class="slider-row">
+          <label for="pauseSlider">Sentence pause</label>
+          <input type="range" id="pauseSlider" min="0" max="800" step="50" value="280">
+          <span id="pauseVal">280ms</span>
+        </div>
+        <div class="bg-note" id="bgNote">
+          <b>For true background TTS (screen off):</b> on your PC, run <code>python prerender.py</code> in your audio folder. It uses Microsoft Edge's neural TTS (free, no API key, US English voices) to produce an MP3 alongside each transcript. The MP3 plays as a regular audio file with full lockscreen / background support.
+        </div>
+      </details>
+      <div class="mini-controls">
+        <button id="prevBtn2" title="Previous">⏮</button>
+        <button id="back15Btn2" title="Back 15s">−15s</button>
+        <button id="playPauseBtn2" class="primary" title="Play/Pause">▶</button>
+        <button id="fwd15Btn2" title="Forward 15s">+15s</button>
+        <button id="nextBtn2" title="Next">⏭</button>
+      </div>
+      <button class="resume-pill" id="resumePill">↓ Resume follow</button>
+    </div>
+  </main>
+
+<script>
+const APP_VERSION = '1.0.0';
+const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
+
+// --- Service Worker (offline cache + auto-update) ---
+let swReg = null;
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load', async () => {
+    try {
+      swReg = await navigator.serviceWorker.register('./sw.js');
+    } catch(_) {}
+  });
+}
+
+document.getElementById('appVersion').textContent = APP_VERSION;
+
+(() => {
+  const AUDIO_EXT = new Set(['mp3','m4a','wav','ogg','oga','opus','flac','aac','webm','mp4']);
+  const TEXT_EXT = new Set(['txt','md','markdown']);
+
+  const $ = id => document.getElementById(id);
+  const pickBtn = $('pickFolderBtn');
+  const rescanBtn = $('rescanBtn');
+  const fallbackInput = $('fallbackInput');
+  const folderStatus = $('folderStatus');
+  const trackSelect = $('trackSelect');
+  const trackCount = $('trackCount');
+  const transcriptCount = $('transcriptCount');
+  const audioEl = $('audioEl');
+  const nowPlaying = $('nowPlaying');
+  const transcriptEl = $('transcript');
+  const transcriptCard = $('transcriptCard');
+  const transcriptTitle = $('transcriptTitle');
+  const playPauseBtn = $('playPauseBtn');
+  const speedBtn = $('speedBtn');
+  const speedLabel = $('speedLabel');
+  const loopBtn = $('loopBtn');
+  const followBtn = $('followBtn');
+  const maximizeBtn = $('maximizeBtn');
+  const resumePill = $('resumePill');
+  const updateBtn = $('updateBtn');
+  const modeBadge = $('modeBadge');
+
+  const readBtn = $('readBtn');
+  const readPauseBtn = $('readPauseBtn');
+  const readStopBtn = $('readStopBtn');
+  const voiceSelect = $('voiceSelect');
+  const rateSlider = $('rateSlider'), rateVal = $('rateVal');
+  const pitchSlider = $('pitchSlider'), pitchVal = $('pitchVal');
+  const pauseSlider = $('pauseSlider'), pauseVal = $('pauseVal');
+
+  let dirHandle = null;
+  let tracks = [];
+  let currentIdx = -1;
+  let currentObjectURL = null;
+  const SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  let speedIdx = 1;
+  let loopMode = 0;
+
+  let timedBlocks = [];
+  let activeBlockEl = null;
+  let followEnabled = true;
+  let userScrollPaused = false;
+  let suppressScrollDetect = false;
+  let scrollResetTimer = null;
+
+  function ext(name){ const i = name.lastIndexOf('.'); return i === -1 ? '' : name.slice(i+1).toLowerCase(); }
+  function baseName(name){ const i = name.lastIndexOf('.'); return i === -1 ? name : name.slice(0,i); }
+  function setStatus(msg, cls=''){ folderStatus.textContent = msg; folderStatus.className = 'status' + (cls ? ' ' + cls : ''); }
+
+  // --- Update check ---
+  function compareVersions(a, b){
+    const pa = a.split('.').map(n => parseInt(n, 10) || 0);
+    const pb = b.split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++){
+      const x = pa[i] || 0, y = pb[i] || 0;
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+  async function checkForUpdate(silent){
+    if (!silent) updateBtn.textContent = 'Checking…';
+    try {
+      const r = await fetch(VERSION_URL, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      if (j && j.version && compareVersions(APP_VERSION, j.version) < 0){
+        modeBadge.textContent = `update v${j.version}`;
+        modeBadge.classList.add('update');
+        modeBadge.onclick = () => applyUpdate();
+        if (!silent) updateBtn.textContent = `Update to v${j.version}`;
+        updateBtn.onclick = () => applyUpdate();
+        return j.version;
+      } else {
+        if (!silent) updateBtn.textContent = 'Up to date';
+      }
+    } catch(e){
+      if (!silent) updateBtn.textContent = 'Check failed (offline?)';
+    }
+    setTimeout(() => { if (updateBtn.textContent !== 'Check for updates' && !modeBadge.classList.contains('update')) updateBtn.textContent = 'Check for updates'; }, 2500);
+    return null;
+  }
+  async function applyUpdate(){
+    if (swReg){
+      try {
+        await swReg.update();
+        // Bypass cache by hard-reloading
+      } catch(_){}
+    }
+    location.reload();
+  }
+  updateBtn.addEventListener('click', () => checkForUpdate(false));
+  // Silent check on load (hosted only — file:// won't fetch raw.githubusercontent reliably anyway)
+  if (location.protocol.startsWith('http')) setTimeout(() => checkForUpdate(true), 1500);
+
+  // --- Folder picking ---
+  async function pickWithFSAccess(){
+    try {
+      const handle = await window.showDirectoryPicker({ mode: 'read' });
+      dirHandle = handle;
+      await scanDir();
+      rescanBtn.disabled = false;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      setStatus('Could not open folder: ' + err.message, 'warn');
+    }
+  }
+  async function scanDir(){
+    if (!dirHandle) return;
+    setStatus('Scanning…');
+    const audioByBase = new Map(), textByBase = new Map();
+    for await (const [name, entry] of dirHandle.entries()){
+      if (entry.kind !== 'file') continue;
+      const e = ext(name), b = baseName(name);
+      if (AUDIO_EXT.has(e)) audioByBase.set(b, { name, handle: entry });
+      else if (TEXT_EXT.has(e)) textByBase.set(b, { name, handle: entry });
+    }
+    buildTrackList(audioByBase, textByBase);
+  }
+  function pickWithInput(){ fallbackInput.value = ''; fallbackInput.click(); }
+  fallbackInput.addEventListener('change', () => {
+    const files = Array.from(fallbackInput.files || []);
+    if (!files.length){ setStatus('No files selected.', 'warn'); return; }
+    const audioByBase = new Map(), textByBase = new Map();
+    for (const f of files){
+      const e = ext(f.name), b = baseName(f.name);
+      if (AUDIO_EXT.has(e)) audioByBase.set(b, { name: f.name, file: f });
+      else if (TEXT_EXT.has(e)) textByBase.set(b, { name: f.name, file: f });
+    }
+    dirHandle = null;
+    rescanBtn.disabled = true;
+    buildTrackList(audioByBase, textByBase);
+  });
+
+  function buildTrackList(audioByBase, textByBase){
+    tracks = [];
+    for (const [base, a] of audioByBase){
+      tracks.push({ kind: 'audio', name: a.name, baseName: base, audioRef: a, textRef: textByBase.get(base) || null });
+    }
+    for (const [base, t] of textByBase){
+      if (!audioByBase.has(base)){
+        tracks.push({ kind: 'text', name: t.name, baseName: base, audioRef: null, textRef: t });
+      }
+    }
+    tracks.sort((x,y) => x.name.localeCompare(y.name, undefined, {numeric:true, sensitivity:'base'}));
+
+    trackSelect.innerHTML = '';
+    if (!tracks.length){
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '— No audio or transcript files found —';
+      trackSelect.appendChild(opt);
+      trackSelect.disabled = true;
+      setStatus('Nothing to play in that folder.', 'warn');
+    } else {
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = '— Select a track —';
+      trackSelect.appendChild(ph);
+      tracks.forEach((t, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        const icon = t.kind === 'text' ? '🗣 ' : (t.textRef ? '📝 ' : '   ');
+        opt.textContent = icon + t.name;
+        trackSelect.appendChild(opt);
+      });
+      trackSelect.disabled = false;
+      setStatus(`Loaded ${tracks.length} item${tracks.length===1?'':'s'}.`, 'good');
+    }
+    const audioCount = tracks.filter(t => t.kind === 'audio').length;
+    const trcount = tracks.filter(t => t.textRef).length;
+    trackCount.textContent = `${audioCount} audio`;
+    transcriptCount.textContent = `${trcount} transcript${trcount===1?'':'s'}`;
+  }
+
+  async function refToBlob(ref){
+    if (!ref) throw new Error('No ref');
+    if (ref.file) return ref.file;
+    if (ref.handle) return await ref.handle.getFile();
+    throw new Error('No file reference');
+  }
+
+  async function loadTrack(idx){
+    if (idx < 0 || idx >= tracks.length) return;
+    stopReading();
+    currentIdx = idx;
+    const t = tracks[idx];
+    nowPlaying.textContent = t.name;
+    trackSelect.value = String(idx);
+
+    if (currentObjectURL){ URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
+    if (t.audioRef){
+      try {
+        const blob = await refToBlob(t.audioRef);
+        currentObjectURL = URL.createObjectURL(blob);
+        audioEl.src = currentObjectURL;
+        audioEl.playbackRate = SPEEDS[speedIdx];
+        try { await audioEl.play(); } catch(_) {}
+        updatePlayPauseLabel();
+        updateMediaSession(t);
+      } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
+    } else {
+      audioEl.removeAttribute('src');
+      audioEl.load();
+      updatePlayPauseLabel();
+    }
+
+    timedBlocks = [];
+    activeBlockEl = null;
+    userScrollPaused = false;
+    resumePill.classList.remove('show');
+
+    if (t.textRef){
+      try {
+        const blob = await refToBlob(t.textRef);
+        const text = await blob.text();
+        renderTranscript(text, t.textRef.name);
+        transcriptTitle.textContent = 'Transcript — ' + t.textRef.name;
+      } catch (err){
+        transcriptEl.innerHTML = '<div class="empty">Could not read transcript.</div>';
+        transcriptTitle.textContent = 'Transcript';
+      }
+    } else {
+      transcriptEl.innerHTML = '<div class="empty">No matching .txt / .md transcript for this track.</div>';
+      transcriptTitle.textContent = 'Transcript';
+    }
+    readBtn.disabled = !t.textRef;
+  }
+
+  // --- Transcript rendering ---
+  const TS_RE = /^\s*[\[\(]?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:[.,](\d{1,3}))?\s*[\]\)]?\s*[-–—:]?\s*/;
+  function parseLeadingTimestamp(line){
+    const m = TS_RE.exec(line);
+    if (!m) return null;
+    let h, mn, s, ms;
+    if (m[3] !== undefined){ h = +m[1]; mn = +m[2]; s = +m[3]; }
+    else { h = 0; mn = +m[1]; s = +m[2]; }
+    ms = m[4] ? parseInt(m[4].padEnd(3,'0').slice(0,3), 10) : 0;
+    if (mn > 59 || s > 59) return null;
+    const seconds = h*3600 + mn*60 + s + ms/1000;
+    const tag = h > 0 ? `${h}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${mn}:${String(s).padStart(2,'0')}`;
+    return { seconds, rest: line.slice(m[0].length), tag };
+  }
+
+  function renderTranscript(raw, filename){
+    const isMd = /\.(md|markdown)$/i.test(filename);
+    const lines = raw.split(/\r?\n/);
+    const blocks = [];
+    let current = { time: null, tag: null, lines: [] };
+    const pushCurrent = () => { if (current.lines.length) blocks.push(current); current = { time: null, tag: null, lines: [] }; };
+    for (const line of lines){
+      if (/^\s*$/.test(line)){ pushCurrent(); continue; }
+      if (current.lines.length === 0){
+        const ts = parseLeadingTimestamp(line);
+        if (ts){ current.time = ts.seconds; current.tag = ts.tag; current.lines.push(ts.rest); continue; }
+      }
+      current.lines.push(line);
+    }
+    pushCurrent();
+
+    transcriptEl.innerHTML = '';
+    timedBlocks = [];
+    if (!blocks.length){ transcriptEl.innerHTML = '<div class="empty">Empty transcript.</div>'; return; }
+
+    for (const b of blocks){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'ts-block';
+      const blockText = b.lines.join('\n');
+      const inner = isMd ? mdToHtml(blockText) : `<p>${escapeHtml(blockText).replace(/\n/g,'<br>')}</p>`;
+      wrapper.innerHTML = inner;
+      if (b.tag){
+        const tagHtml = `<span class="ts-tag" data-time="${b.time}">${b.tag}</span>`;
+        const firstEl = wrapper.firstElementChild;
+        if (firstEl && /^(P|LI|H[1-6]|BLOCKQUOTE)$/.test(firstEl.tagName)){ firstEl.insertAdjacentHTML('afterbegin', tagHtml); }
+        else { wrapper.insertAdjacentHTML('afterbegin', tagHtml); }
+      }
+      if (b.time !== null){ wrapper.dataset.time = String(b.time); timedBlocks.push({ el: wrapper, time: b.time }); }
+      transcriptEl.appendChild(wrapper);
+    }
+    wrapSentencesForSpeech(transcriptEl);
+    transcriptEl.querySelectorAll('.ts-tag').forEach(el => {
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        const t = parseFloat(el.dataset.time);
+        if (!isNaN(t) && audioEl.src){
+          audioEl.currentTime = t;
+          if (audioEl.paused) audioEl.play().catch(()=>{});
+        }
+      });
+    });
+    timedBlocks.sort((a,b) => a.time - b.time);
+    suppressScrollDetect = true;
+    transcriptEl.scrollTop = 0;
+    requestAnimationFrame(() => { suppressScrollDetect = false; });
+  }
+
+  function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function mdToHtml(src){
+    const codeBlocks = []; const CB_MARK = 'CB';
+    src = src.replace(/```([\s\S]*?)```/g, (m, code) => { codeBlocks.push(code); return `\n${CB_MARK}${codeBlocks.length-1}${CB_MARK}\n`; });
+    const lines = src.split(/\r?\n/);
+    const out = []; let inList = null; let para = [];
+    const flushPara = () => { if (para.length){ out.push('<p>' + inlineMd(para.join(' ')) + '</p>'); para = []; } };
+    const closeList = () => { if (inList){ out.push(`</${inList}>`); inList = null; } };
+    for (const line of lines){
+      if (/^\s*$/.test(line)){ flushPara(); closeList(); continue; }
+      const cbMatch = new RegExp(`^${CB_MARK}(\\d+)${CB_MARK}$`).exec(line);
+      if (cbMatch){ flushPara(); closeList(); out.push('<pre><code>' + escapeHtml(codeBlocks[+cbMatch[1]]) + '</code></pre>'); continue; }
+      let m;
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(line))){ flushPara(); closeList(); out.push(`<h${m[1].length}>${inlineMd(m[2])}</h${m[1].length}>`); continue; }
+      if (/^\s*>\s?/.test(line)){ flushPara(); closeList(); out.push('<blockquote>' + inlineMd(line.replace(/^\s*>\s?/, '')) + '</blockquote>'); continue; }
+      if ((m = /^\s*[-*+]\s+(.*)$/.exec(line))){ flushPara(); if (inList !== 'ul'){ closeList(); out.push('<ul>'); inList='ul'; } out.push('<li>' + inlineMd(m[1]) + '</li>'); continue; }
+      if ((m = /^\s*\d+\.\s+(.*)$/.exec(line))){ flushPara(); if (inList !== 'ol'){ closeList(); out.push('<ol>'); inList='ol'; } out.push('<li>' + inlineMd(m[1]) + '</li>'); continue; }
+      if (/^\s*[-*_]{3,}\s*$/.test(line)){ flushPara(); closeList(); out.push('<hr>'); continue; }
+      closeList(); para.push(line);
+    }
+    flushPara(); closeList();
+    return out.join('\n');
+  }
+  function inlineMd(s){
+    s = escapeHtml(s);
+    const codes = []; const IC_MARK = 'IC';
+    s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `${IC_MARK}${codes.length-1}${IC_MARK}`; });
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[\s(])_([^_\s][^_]*)_/g, '$1<em>$2</em>');
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>');
+    s = s.replace(new RegExp(`${IC_MARK}(\\d+)${IC_MARK}`, 'g'), (_, i) => '<code>' + codes[+i] + '</code>');
+    return s;
+  }
+
+  const ABBREVS = ['Mr','Mrs','Ms','Dr','St','Prof','Jr','Sr','vs','etc','e\\.g','i\\.e','U\\.S','U\\.K','Inc','Ltd','Co','Corp','No','Vol','pp','Fig','Sec','Ch'];
+  function splitSentences(text){
+    if (!text || !text.trim()) return [];
+    const sentinel = '';
+    let protectedText = text;
+    for (const a of ABBREVS){
+      protectedText = protectedText.replace(new RegExp(`\\b${a}\\.`, 'g'), m => m.replace('.', sentinel));
+    }
+    const parts = protectedText.split(/(?<=[.!?…])\s+(?=[A-Z"'(“‘])/);
+    return parts.map(s => s.replace(new RegExp(sentinel, 'g'), '.')).map(s => s.trim()).filter(Boolean);
+  }
+  function wrapSentencesForSpeech(root){
+    const SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, h5, h6';
+    root.querySelectorAll(SELECTOR).forEach(el => {
+      if (el.querySelector('.ts-sentence')) return;
+      const newChildren = [];
+      el.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE){
+          const sentences = splitSentences(node.nodeValue);
+          if (sentences.length === 0){ newChildren.push(node); }
+          else {
+            const original = node.nodeValue;
+            let cursor = 0;
+            for (const s of sentences){
+              const idx = original.indexOf(s, cursor);
+              if (idx > cursor) newChildren.push(document.createTextNode(original.slice(cursor, idx)));
+              const span = document.createElement('span');
+              span.className = 'ts-sentence';
+              span.textContent = s;
+              newChildren.push(span);
+              cursor = idx + s.length;
+            }
+            if (cursor < original.length) newChildren.push(document.createTextNode(original.slice(cursor)));
+          }
+        } else { newChildren.push(node); }
+      });
+      el.innerHTML = '';
+      newChildren.forEach(c => el.appendChild(c));
+    });
+    root.querySelectorAll('.ts-sentence').forEach(span => {
+      span.addEventListener('click', e => {
+        e.stopPropagation();
+        const all = Array.from(root.querySelectorAll('.ts-sentence'));
+        const idx = all.indexOf(span);
+        if (idx >= 0) startReading(idx);
+      });
+    });
+  }
+
+  function setActiveBlock(el){
+    if (activeBlockEl === el) return;
+    if (activeBlockEl) activeBlockEl.classList.remove('active');
+    activeBlockEl = el;
+    if (el) el.classList.add('active');
+  }
+  function programmaticScrollTo(top){
+    suppressScrollDetect = true;
+    transcriptEl.scrollTop = top;
+    clearTimeout(scrollResetTimer);
+    scrollResetTimer = setTimeout(() => { suppressScrollDetect = false; }, 600);
+  }
+  function scrollElementIntoCenter(el){
+    const cRect = transcriptEl.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const target = transcriptEl.scrollTop + (eRect.top - cRect.top) - (transcriptEl.clientHeight / 2) + (el.offsetHeight / 2);
+    programmaticScrollTo(Math.max(0, target));
+  }
+  function syncTranscriptToTime(){
+    if (!followEnabled || userScrollPaused) return;
+    if (ttsState.active) return;
+    if (!audioEl.duration || isNaN(audioEl.duration)) return;
+    const t = audioEl.currentTime;
+    if (timedBlocks.length){
+      let lo = 0, hi = timedBlocks.length - 1, idx = -1;
+      while (lo <= hi){
+        const mid = (lo + hi) >> 1;
+        if (timedBlocks[mid].time <= t){ idx = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      const target = idx >= 0 ? timedBlocks[idx].el : null;
+      if (target && target !== activeBlockEl){ setActiveBlock(target); scrollElementIntoCenter(target); }
+    } else {
+      const ratio = Math.min(1, Math.max(0, t / audioEl.duration));
+      const max = transcriptEl.scrollHeight - transcriptEl.clientHeight;
+      if (max > 0) programmaticScrollTo(ratio * max);
+    }
+    if ('mediaSession' in navigator && audioEl.duration){
+      try { navigator.mediaSession.setPositionState({ duration: audioEl.duration, playbackRate: audioEl.playbackRate || 1, position: audioEl.currentTime }); } catch(_) {}
+    }
+  }
+  audioEl.addEventListener('timeupdate', syncTranscriptToTime);
+  audioEl.addEventListener('seeked', syncTranscriptToTime);
+  audioEl.addEventListener('ratechange', syncTranscriptToTime);
+
+  transcriptEl.addEventListener('scroll', () => {
+    if (suppressScrollDetect) return;
+    if (!followEnabled) return;
+    userScrollPaused = true;
+    resumePill.classList.add('show');
+  });
+  resumePill.addEventListener('click', () => {
+    userScrollPaused = false;
+    resumePill.classList.remove('show');
+    if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
+    else { syncTranscriptToTime(); if (activeBlockEl) scrollElementIntoCenter(activeBlockEl); }
+  });
+  followBtn.addEventListener('click', () => {
+    followEnabled = !followEnabled;
+    followBtn.classList.toggle('toggled', followEnabled);
+    followBtn.textContent = followEnabled ? 'Follow ✓' : 'Follow';
+    if (followEnabled){
+      userScrollPaused = false;
+      resumePill.classList.remove('show');
+      if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
+      else { syncTranscriptToTime(); if (activeBlockEl) scrollElementIntoCenter(activeBlockEl); }
+    }
+  });
+
+  function setMaximized(on){
+    transcriptCard.classList.toggle('maximized', on);
+    document.body.classList.toggle('is-maximized', on);
+    maximizeBtn.textContent = on ? '⤡' : '⤢';
+    maximizeBtn.title = on ? 'Exit maximize' : 'Maximize transcript';
+    requestAnimationFrame(() => {
+      if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
+      else if (activeBlockEl) scrollElementIntoCenter(activeBlockEl);
+      else if (followEnabled && !userScrollPaused) syncTranscriptToTime();
+    });
+  }
+  maximizeBtn.addEventListener('click', () => setMaximized(!transcriptCard.classList.contains('maximized')));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && transcriptCard.classList.contains('maximized')) setMaximized(false); });
+
+  function updatePlayPauseLabel(){
+    const label = audioEl.paused ? '▶' : '⏸';
+    playPauseBtn.textContent = label;
+    $('playPauseBtn2').textContent = label;
+    if ('mediaSession' in navigator){
+      try { navigator.mediaSession.playbackState = audioEl.paused ? 'paused' : 'playing'; } catch(_) {}
+    }
+  }
+  function bindControl(id, handler){ const el = $(id); if (el) el.addEventListener('click', handler); }
+
+  pickBtn.addEventListener('click', () => {
+    if ('showDirectoryPicker' in window) pickWithFSAccess();
+    else pickWithInput();
+  });
+  rescanBtn.addEventListener('click', () => { if (dirHandle) scanDir(); });
+
+  trackSelect.addEventListener('change', e => { const v = e.target.value; if (v === '') return; loadTrack(parseInt(v, 10)); });
+
+  const playPause = () => {
+    if (!audioEl.src){ if (tracks.length) loadTrack(0); return; }
+    if (audioEl.paused) audioEl.play(); else audioEl.pause();
+  };
+  bindControl('playPauseBtn', playPause);
+  bindControl('playPauseBtn2', playPause);
+  audioEl.addEventListener('play', () => { stopReading(); updatePlayPauseLabel(); });
+  audioEl.addEventListener('pause', updatePlayPauseLabel);
+
+  const goPrev = () => { if (!tracks.length) return; loadTrack(currentIdx <= 0 ? tracks.length - 1 : currentIdx - 1); };
+  const goNext = () => { if (!tracks.length) return; loadTrack((currentIdx + 1) % tracks.length); };
+  const back15 = () => { audioEl.currentTime = Math.max(0, audioEl.currentTime - 15); };
+  const fwd15 = () => { audioEl.currentTime = Math.min(audioEl.duration || 0, audioEl.currentTime + 15); };
+  ['prevBtn','prevBtn2'].forEach(i => bindControl(i, goPrev));
+  ['nextBtn','nextBtn2'].forEach(i => bindControl(i, goNext));
+  ['back15Btn','back15Btn2'].forEach(i => bindControl(i, back15));
+  ['fwd15Btn','fwd15Btn2'].forEach(i => bindControl(i, fwd15));
+
+  speedBtn.addEventListener('click', () => {
+    speedIdx = (speedIdx + 1) % SPEEDS.length;
+    audioEl.playbackRate = SPEEDS[speedIdx];
+    speedLabel.textContent = SPEEDS[speedIdx].toFixed(2).replace(/\.?0+$/,'') + '×';
+  });
+  loopBtn.addEventListener('click', () => {
+    loopMode = (loopMode + 1) % 3;
+    audioEl.loop = (loopMode === 1);
+    loopBtn.textContent = 'Loop: ' + (loopMode===0?'Off':loopMode===1?'One':'All');
+  });
+  audioEl.addEventListener('ended', () => {
+    if (loopMode === 1) return;
+    if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length);
+    else if (currentIdx + 1 < tracks.length) loadTrack(currentIdx + 1);
+  });
+
+  const ART_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+  function updateMediaSession(t){
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.baseName, artist: 'Offline Audio Player', album: 'Local files',
+        artwork: [{ src: ART_URL, sizes: '96x96', type: 'image/png' }],
+      });
+      navigator.mediaSession.setActionHandler('play', () => audioEl.play());
+      navigator.mediaSession.setActionHandler('pause', () => audioEl.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', goPrev);
+      navigator.mediaSession.setActionHandler('nexttrack', goNext);
+      navigator.mediaSession.setActionHandler('seekbackward', back15);
+      navigator.mediaSession.setActionHandler('seekforward', fwd15);
+      navigator.mediaSession.setActionHandler('seekto', e => {
+        if (e.fastSeek && 'fastSeek' in audioEl) audioEl.fastSeek(e.seekTime);
+        else audioEl.currentTime = e.seekTime;
+      });
+    } catch(_) {}
+  }
+
+  // --- Text-to-Speech ---
+  const synth = window.speechSynthesis;
+  const ttsAvailable = !!synth;
+  let voices = [];
+  let chosenVoice = null;
+  const ttsState = { active: false, paused: false, cancelling: false, sentences: [], index: 0, currentSpan: null, watchdog: null };
+
+  function loadVoices(){
+    voices = (synth ? synth.getVoices() : []).filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    voices.sort((a, b) => {
+      const ausa = a.lang.toLowerCase() === 'en-us' ? 0 : 1;
+      const busa = b.lang.toLowerCase() === 'en-us' ? 0 : 1;
+      if (ausa !== busa) return ausa - busa;
+      return rankVoice(b) - rankVoice(a);
+    });
+    populateVoiceSelect();
+  }
+  function rankVoice(v){
+    const n = (v.name || '').toLowerCase();
+    let r = 0;
+    if (/google/.test(n)) r += 6;
+    if (/natural|neural|online|premium|enhanced/.test(n)) r += 5;
+    if (/aria|jenny|guy|ava|andrew|emma|brian/.test(n)) r += 4;
+    if (/samantha|alex|karen|fiona|moira|tessa/.test(n)) r += 3;
+    if (/zira|david|mark/.test(n)) r += 2;
+    if (v.localService) r += 1;
+    return r;
+  }
+  function populateVoiceSelect(){
+    voiceSelect.innerHTML = '';
+    if (!ttsAvailable){ const opt = document.createElement('option'); opt.textContent = 'Speech synthesis not available'; opt.value = ''; voiceSelect.appendChild(opt); voiceSelect.disabled = true; return; }
+    if (!voices.length){ const opt = document.createElement('option'); opt.textContent = '(no English voices found)'; opt.value = ''; voiceSelect.appendChild(opt); return; }
+    const firstUS = voices.find(v => v.lang.toLowerCase() === 'en-us');
+    chosenVoice = firstUS || voices[0];
+    voices.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name + '|' + v.lang;
+      opt.textContent = `${v.name} — ${v.lang}${v.localService ? '' : ' (online)'}`;
+      if (v === chosenVoice) opt.selected = true;
+      voiceSelect.appendChild(opt);
+    });
+  }
+  voiceSelect.addEventListener('change', () => { const v = voices.find(x => (x.name + '|' + x.lang) === voiceSelect.value); if (v) chosenVoice = v; });
+  if (ttsAvailable){
+    loadVoices();
+    if (synth.onvoiceschanged !== undefined) synth.addEventListener('voiceschanged', loadVoices);
+  } else {
+    readBtn.disabled = true;
+    voiceSelect.innerHTML = '<option>Not available</option>';
+  }
+  rateSlider.addEventListener('input', () => { rateVal.textContent = (+rateSlider.value).toFixed(2) + '×'; });
+  pitchSlider.addEventListener('input', () => { pitchVal.textContent = (+pitchSlider.value).toFixed(2); });
+  pauseSlider.addEventListener('input', () => { pauseVal.textContent = pauseSlider.value + 'ms'; });
+
+  function setReadingControls(active){
+    readBtn.disabled = active;
+    readPauseBtn.disabled = !active;
+    readStopBtn.disabled = !active;
+    readPauseBtn.textContent = ttsState.paused ? '▶' : '⏸';
+  }
+  function highlightSpan(span){
+    if (ttsState.currentSpan === span) return;
+    if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
+    ttsState.currentSpan = span;
+    if (span){ span.classList.add('speaking'); if (followEnabled && !userScrollPaused) scrollElementIntoCenter(span); }
+  }
+  function pauseAfter(span, baseMs){
+    const text = (span.textContent || '').trim();
+    const endsHard = /[.!?…]\s*["')\]]?$/.test(text);
+    const endsSoft = /[,;:]\s*["')\]]?$/.test(text);
+    const parent = span.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6');
+    const sentencesInParent = parent ? parent.querySelectorAll('.ts-sentence') : [];
+    const isLastInBlock = sentencesInParent.length && sentencesInParent[sentencesInParent.length - 1] === span;
+    const isHeading = parent && /^H[1-6]$/.test(parent.tagName);
+    let ms = baseMs;
+    if (endsSoft && !endsHard) ms = Math.max(0, baseMs * 0.55);
+    if (isHeading) ms = baseMs * 1.6;
+    if (isLastInBlock) ms = baseMs + 380;
+    return Math.round(ms);
+  }
+  function speakUtterance(text){
+    return new Promise(resolve => {
+      if (!text || !text.trim()){ resolve(); return; }
+      const u = new SpeechSynthesisUtterance(text);
+      if (chosenVoice) u.voice = chosenVoice;
+      u.lang = (chosenVoice && chosenVoice.lang) || 'en-US';
+      u.rate = +rateSlider.value || 0.95;
+      u.pitch = +pitchSlider.value || 1.0;
+      u.volume = 1.0;
+      let done = false;
+      const finish = () => { if (done) return; done = true; resolve(); };
+      const charsPerSec = 14 * (u.rate || 1);
+      const maxMs = Math.max(4000, (text.length / charsPerSec) * 1000 * 1.6 + 2000);
+      const safety = setTimeout(finish, maxMs);
+      u.onend = () => { clearTimeout(safety); finish(); };
+      u.onerror = () => { clearTimeout(safety); finish(); };
+      synth.speak(u);
+    });
+  }
+  function startWatchdog(){
+    stopWatchdog();
+    ttsState.watchdog = setInterval(() => {
+      if (!synth.speaking) return;
+      try { synth.pause(); synth.resume(); } catch(_) {}
+    }, 12000);
+  }
+  function stopWatchdog(){ if (ttsState.watchdog){ clearInterval(ttsState.watchdog); ttsState.watchdog = null; } }
+  function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  async function runTtsLoop(){
+    startWatchdog();
+    while (ttsState.active && ttsState.index < ttsState.sentences.length){
+      while (ttsState.paused && !ttsState.cancelling){ await wait(120); }
+      if (ttsState.cancelling) break;
+      const span = ttsState.sentences[ttsState.index];
+      highlightSpan(span);
+      const text = (span.textContent || '').trim();
+      await speakUtterance(text);
+      if (ttsState.cancelling) break;
+      const ms = pauseAfter(span, +pauseSlider.value || 280);
+      if (ms > 0){
+        const start = Date.now();
+        while (Date.now() - start < ms){
+          if (ttsState.cancelling) break;
+          if (ttsState.paused){ await wait(80); continue; }
+          await wait(Math.min(80, ms - (Date.now() - start)));
+        }
+      }
+      ttsState.index++;
+    }
+    stopWatchdog();
+    if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
+    ttsState.currentSpan = null;
+    ttsState.active = false; ttsState.paused = false; ttsState.cancelling = false;
+    setReadingControls(false);
+  }
+
+  function startReading(fromIndex = 0){
+    if (!ttsAvailable) return;
+    const allSpans = Array.from(transcriptEl.querySelectorAll('.ts-sentence'));
+    if (!allSpans.length) return;
+    stopReading(true);
+    if (!audioEl.paused) audioEl.pause();
+    ttsState.active = true; ttsState.paused = false; ttsState.cancelling = false;
+    ttsState.sentences = allSpans;
+    ttsState.index = Math.max(0, Math.min(fromIndex, allSpans.length - 1));
+    setReadingControls(true);
+    runTtsLoop();
+  }
+  function stopReading(silent){
+    if (!ttsState.active && !(synth && synth.speaking)) return;
+    ttsState.cancelling = true;
+    ttsState.paused = false;
+    try { synth.cancel(); } catch(_) {}
+    stopWatchdog();
+    if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
+    ttsState.currentSpan = null;
+    ttsState.active = false;
+    if (!silent) setReadingControls(false);
+  }
+  function togglePauseReading(){
+    if (!ttsState.active) return;
+    if (!ttsState.paused){ ttsState.paused = true; try { synth.pause(); } catch(_) {} }
+    else { ttsState.paused = false; try { synth.resume(); } catch(_) {} }
+    setReadingControls(true);
+  }
+  readBtn.addEventListener('click', () => startReading(0));
+  readPauseBtn.addEventListener('click', togglePauseReading);
+  readStopBtn.addEventListener('click', () => stopReading(false));
+
+  document.addEventListener('visibilitychange', () => {
+    if (!ttsState.active) return;
+    if (document.hidden){
+      if (!ttsState.paused){ ttsState.paused = true; try { synth.pause(); } catch(_) {} }
+    } else {
+      if (ttsState.paused){ ttsState.paused = false; try { synth.resume(); } catch(_) {} setReadingControls(true); }
+    }
+  });
+
+  if (!('showDirectoryPicker' in window)){
+    setStatus('This browser will use a multi-select picker — choose all audio + transcript files at once.', 'warn');
+  }
+  readBtn.disabled = true;
+})();
+</script>
+</body>
+</html>

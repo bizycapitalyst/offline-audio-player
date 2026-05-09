@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "released": "2026-05-09",
+  "notes": "Initial release: folder-aware audio player, transcript pairing, timestamp sync, maximize, follow-along scroll, US English TTS read-aloud, Media Session background playback, prerender.py for true background TTS."
+}

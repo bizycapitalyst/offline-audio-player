@@ -1,0 +1,20 @@
+{
+  "name": "Offline Audio Player",
+  "short_name": "AudioPlayer",
+  "description": "Standalone offline audio player with auto-discovered transcripts and US English TTS.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e0e12",
+  "theme_color": "#0e0e12",
+  "categories": ["music", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%230e0e12'/><circle cx='96' cy='96' r='56' fill='none' stroke='%237aa2ff' stroke-width='8'/><path d='M84 72 v48 l40 -24 z' fill='%237aa2ff'/></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
