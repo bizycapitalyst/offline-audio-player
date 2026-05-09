@@ -86,6 +86,9 @@
   }
   body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   body.is-maximized { overflow: hidden; }
+  /* When the transcript is maximized, hide the app header so its offline
+     chip can't overlap the transcript card's Follow / Minimize buttons. */
+  body.is-maximized header.app-header { display: none; }
   ::selection { background: var(--accent-soft); color: var(--text); }
 
   /* --- Header --- */
@@ -306,6 +309,27 @@
     background: var(--accent-soft);
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
+  }
+  /* Follow chip uses the theme's blue (matches the follow-along highlight
+     color) in both states, so it always reads as "this is the follow
+     control". Off = subtle blue pill, On = solid filled blue. */
+  button#followBtn {
+    background: var(--blue-soft);
+    border-color: rgba(96,165,250,0.4);
+    color: var(--blue);
+  }
+  button#followBtn:hover:not(:disabled) {
+    background: rgba(96,165,250,0.20);
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  button#followBtn.toggled {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #07101e;
+  }
+  button#followBtn.toggled:hover:not(:disabled) {
+    filter: brightness(1.06);
   }
 
   .row { display: flex; gap: 8px; }
@@ -799,7 +823,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
