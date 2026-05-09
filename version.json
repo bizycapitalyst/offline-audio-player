@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "released": "2026-05-09",
-  "notes": "(1) Audio file is now read fully into RAM as an ArrayBuffer-backed Blob before being handed to the audio element. Symptom of the old behavior: the playback clock advanced but no sound — typical of Android Chrome revoking the underlying FileSystemFileHandle mid-playback while the streaming Blob URL is still bound to <audio>. The in-memory Blob severs that dependency. (2) Added a live audio-state indicator under the now-playing label that surfaces lifecycle events (loading / buffering / stalled / error). If audio cuts out, the indicator shows what state the element is in. SW cache bumped to v5."
+  "notes": "TTS reliability fixes for the 'first 2 sentences play then silence' pattern on Android Chrome. (1) Pre-emptive synth.cancel() before each speak() if the engine is in speaking/pending state — clears stuck queue from a prior utterance. (2) Removed the periodic pause/resume watchdog: it was meant to defeat Chrome's 15-second utterance timeout, but on Android it corrupts engine state between sentences. Sentences are short enough that the timeout doesn't apply. (3) Audio-state indicator now also surfaces TTS progress (e.g. 'tts 3/12') so you can see where the engine wedges if it does. SW cache bumped to v6."
 }

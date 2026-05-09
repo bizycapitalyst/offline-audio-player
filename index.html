@@ -805,7 +805,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1644,6 +1644,12 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   function speakUtterance(text){
     return new Promise(resolve => {
       if (!text || !text.trim()){ resolve(); return; }
+      // If the engine is still in a speaking/pending state from a prior
+      // utterance, kick it. Chrome on Android can otherwise wedge after a
+      // couple of utterances where speak() is accepted but never starts.
+      if (synth.speaking || synth.pending){
+        try { synth.cancel(); } catch(_) {}
+      }
       const u = new SpeechSynthesisUtterance(text);
       if (chosenVoice) u.voice = chosenVoice;
       // ALWAYS hint US English regardless of the underlying voice's reported
@@ -1660,16 +1666,18 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       const safety = setTimeout(finish, maxMs);
       u.onend = () => { clearTimeout(safety); finish(); };
       u.onerror = () => { clearTimeout(safety); finish(); };
-      synth.speak(u);
+      // Tiny delay after the cancel above (if any) so the engine settles
+      // before the next speak — back-to-back cancel/speak races on Android.
+      setTimeout(() => { try { synth.speak(u); } catch(_) { finish(); } }, 30);
     });
   }
-  function startWatchdog(){
-    stopWatchdog();
-    ttsState.watchdog = setInterval(() => {
-      if (!synth.speaking) return;
-      try { synth.pause(); synth.resume(); } catch(_) {}
-    }, 12000);
-  }
+  // Watchdog disabled: the periodic pause/resume that was meant to defeat
+  // Chrome's 15-second speech timeout was empirically corrupting engine
+  // state on Android — after firing once the synth refused to start
+  // subsequent utterances, producing the "first 2 sentences play then
+  // silence" pattern. Sentences are short enough that the 15s timeout
+  // doesn't apply to typical content.
+  function startWatchdog(){ /* no-op */ }
   function stopWatchdog(){ if (ttsState.watchdog){ clearInterval(ttsState.watchdog); ttsState.watchdog = null; } }
   function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -1681,6 +1689,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       const span = ttsState.sentences[ttsState.index];
       highlightSpan(span);
       const text = (span.textContent || '').trim();
+      // Diagnostic: show which sentence is being spoken in the audio-state
+      // indicator. If playback wedges, you can see exactly where.
+      setAudioState(`tts ${ttsState.index + 1}/${ttsState.sentences.length}`);
       await speakUtterance(text);
       if (ttsState.cancelling) break;
       const ms = pauseAfter(span, +pauseSlider.value || 280);
@@ -1699,6 +1710,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     ttsState.currentSpan = null;
     ttsState.active = false; ttsState.paused = false; ttsState.cancelling = false;
     setReadingControls(false);
+    setAudioState('');
   }
 
   function startReading(fromIndex = 0){
