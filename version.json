@@ -1,5 +1,5 @@
 {
-  "version": "1.8.1",
+  "version": "1.8.2",
   "released": "2026-05-07",
-  "notes": "Loop toggle joins the play shuttle as the leftmost button, ahead of Prev / -15s / Play / +15s / Next (now a 6-column grid). Loop active states (Loop one, Loop folder) recolored to a slightly more saturated blue rather than amber — all three loop states are now in the cool blue palette. The icon itself (slashed-repeat / repeat-1 / repeat) carries the state distinction. Speed gets the secondary row to itself."
+  "notes": "Loop toggle moved to between -15s and Play in the shuttle row (Prev / -15s / Loop / Play / +15s / Next). Maximize / minimize button switched from unicode glyphs to explicit-sized SVG icons (18 px) so the arrows are clearly readable; the button chip itself stays the same size."
 }

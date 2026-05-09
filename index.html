@@ -316,6 +316,21 @@
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
   }
+  /* Maximize / minimize button — the unicode glyphs ⤢ / ⤡ rendered too
+     small in the icon chip. Explicit-sized SVG icons inside keep the
+     button.icon outer shape exactly the same (padding/font-size on the
+     button are unchanged) but make the arrows clearly readable. */
+  #maximizeBtn {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    line-height: 1;
+  }
+  #maximizeBtn svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+  }
+
   /* Follow chip uses the theme's yellow styling at all times — the
      blue "toggled" state was confusing because the visible color
      desynced from the actual follow state on minimize/maximize and
@@ -848,7 +863,9 @@
         <span class="title" id="transcriptTitle">Transcript</span>
         <div class="actions">
           <button class="icon" id="followBtn" title="Auto-scroll with audio">Follow</button>
-          <button class="icon" id="maximizeBtn" title="Maximize transcript">⤢</button>
+          <button class="icon" id="maximizeBtn" title="Maximize transcript" aria-label="Maximize transcript">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
         </div>
       </div>
       <div class="transcript" id="transcript">
@@ -891,7 +908,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1638,8 +1655,13 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   function setMaximized(on){
     transcriptCard.classList.toggle('maximized', on);
     document.body.classList.toggle('is-maximized', on);
-    maximizeBtn.textContent = on ? '⤡' : '⤢';
+    // SVG icons for the two states. The button container stays at its
+    // existing button.icon size; only the SVG inside conveys state.
+    const SVG_MAXIMIZE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    const SVG_MINIMIZE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    maximizeBtn.innerHTML = on ? SVG_MINIMIZE : SVG_MAXIMIZE;
     maximizeBtn.title = on ? 'Exit maximize' : 'Maximize transcript';
+    maximizeBtn.setAttribute('aria-label', maximizeBtn.title);
     // Maximizing or minimizing always resets the follow state to its
     // chip preference: if Follow is on, auto-resume (no Resume pill, no
     // tap required); if Follow is off, leave the transcript alone.
