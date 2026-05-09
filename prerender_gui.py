@@ -196,6 +196,7 @@ class App:
         self.root.title(APP_TITLE)
         self.root.minsize(580, 500)
 
+        self._set_window_icon()
         self._apply_theme()
 
         self.files: list[str] = []
@@ -228,6 +229,35 @@ class App:
         x = (screen_w - w) // 2
         y = max(20, (screen_h - h) // 4)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _set_window_icon(self):
+        """Set the Tk window's title-bar / taskbar icon to the same headphones
+        glyph the Android PWA uses. Tries the .ico first (best on Windows;
+        carries multiple resolutions in one file), falls back to the 192-px
+        PNG via iconphoto for other platforms.
+
+        When packaged as a PyInstaller --onefile exe the resources live in
+        sys._MEIPASS/icons rather than next to the script, so we check both
+        paths."""
+        try:
+            base_candidates = [Path(__file__).parent]
+            mei = getattr(sys, "_MEIPASS", None)
+            if mei:
+                base_candidates.insert(0, Path(mei))
+
+            for base in base_candidates:
+                ico = base / "icons" / "headphones.ico"
+                if ico.exists():
+                    self.root.iconbitmap(default=str(ico))
+                    return
+            for base in base_candidates:
+                png = base / "icons" / "headphones-192.png"
+                if png.exists():
+                    self._icon_img = tk.PhotoImage(file=str(png))
+                    self.root.iconphoto(True, self._icon_img)
+                    return
+        except Exception:
+            pass  # silently no-op if we can't locate or load the icon
 
     def _apply_theme(self):
         """Apply a dark theme matching the Spanish Trainer / Audio Player

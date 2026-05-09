@@ -55,6 +55,9 @@ echo ----------------------------------------
 REM --onefile          : single .exe instead of a folder
 REM --windowed         : no console window when launched
 REM --name             : output binary name
+REM --icon             : .ico embedded as the exe + window resource
+REM --add-data         : also bundle the icons/ folder so the runtime
+REM                      iconbitmap call can find the file inside _MEIPASS
 REM --hidden-import    : modules PyInstaller's static analysis often misses
 REM --collect-submodules: pull in everything from packages with dynamic imports
 
@@ -63,6 +66,9 @@ REM --collect-submodules: pull in everything from packages with dynamic imports
     --onefile ^
     --windowed ^
     --name "TTS_Converter" ^
+    --icon "icons/headphones.ico" ^
+    --add-data "icons/headphones.ico;icons" ^
+    --add-data "icons/headphones-192.png;icons" ^
     --hidden-import edge_tts ^
     --hidden-import edge_tts.communicate ^
     --hidden-import edge_tts.constants ^

@@ -87,7 +87,20 @@ def main() -> None:
         img = fn(size)
         img.save(path, optimize=True)
         print(f"  wrote {path.relative_to(OUT.parent)}  ({size}x{size})")
-    print(f"Done. {len(targets)} PNGs in {OUT.relative_to(OUT.parent)}/")
+
+    # Multi-resolution Windows .ico for the TTS Converter exe + Tk window.
+    # Pillow's ICO writer takes the largest source and produces all the
+    # listed `sizes` from it; we pass a 256-px master.
+    ico_path = OUT / "headphones.ico"
+    master = make_any(256)
+    master.save(
+        ico_path,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
+    print(f"  wrote {ico_path.relative_to(OUT.parent)}  (multi-res .ico)")
+
+    print(f"Done. {len(targets) + 1} icons in {OUT.relative_to(OUT.parent)}/")
 
 
 if __name__ == "__main__":
