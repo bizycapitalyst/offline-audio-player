@@ -1,5 +1,5 @@
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "released": "2026-05-09",
-  "notes": "(1) App header (incl. offline chip) is hidden while the transcript is maximized, preventing visual overlap with the transcript's Follow / Minimize buttons in fullscreen mode. (2) Follow chip recolored to the theme's blue (matches the follow highlight): subtle blue pill when off, solid blue when on. Other icon chips (Maximize) keep their muted styling."
+  "notes": "(1) Header chip now shows the running version (e.g. v1.7.2) instead of the static 'OFFLINE' label. When a newer release is detected the chip flips to 'update vX.Y.Z' (green, clickable). (2) Tapping the update chip used to require two presses to actually take effect — the first reload was served by the still-old service worker. applyUpdate now waits for the new SW's controllerchange event (with a 2.5s fallback) before reloading, so a single tap reliably applies the update. SW cache bumped to v7."
 }

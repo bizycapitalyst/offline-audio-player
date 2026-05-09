@@ -123,14 +123,14 @@
     margin-top: 1px;
   }
   .badge {
-    font-size: 10px; font-weight: 600;
-    padding: 4px 9px;
+    font-size: 10.5px; font-weight: 600;
+    padding: 4px 10px;
     border-radius: 999px;
     background: var(--bg-tile);
     color: var(--text-dim);
     border: 1px solid var(--border);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
   .badge.update {
@@ -138,8 +138,6 @@
     color: var(--good);
     border-color: rgba(52,211,153,0.4);
     cursor: pointer;
-    text-transform: none;
-    letter-spacing: 0;
   }
 
   main { position: relative; z-index: 1; padding: 0 14px 80px; max-width: 480px; margin: 0 auto; }
@@ -711,7 +709,7 @@
         <div class="sub">Auto-paired transcripts · airplane-mode ready</div>
       </div>
     </div>
-    <span class="badge" id="modeBadge">offline</span>
+    <span class="badge" id="modeBadge"></span>
   </header>
   <main>
     <div class="card section" id="folderCard">
@@ -823,7 +821,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.7.2';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -837,6 +835,12 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
 }
 
 document.getElementById('appVersion').textContent = APP_VERSION;
+// Default header chip = current version. Flips to "update vX.Y.Z" (green
+// styling, clickable) only when a newer release is detected.
+{
+  const _b = document.getElementById('modeBadge');
+  if (_b) _b.textContent = 'v' + APP_VERSION;
+}
 
 (() => {
   const AUDIO_EXT = new Set(['mp3','m4a','wav','ogg','oga','opus','flac','aac','webm','mp4']);
@@ -996,13 +1000,34 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     return null;
   }
   async function applyUpdate(){
-    if (swReg){
-      try {
-        await swReg.update();
-        // Bypass cache by hard-reloading
-      } catch(_){}
+    // The previous version did `await swReg.update(); location.reload()` which
+    // had a race: the reload often fired before the freshly-installed service
+    // worker had taken control of the page, so the FIRST reload was still
+    // served by the old SW (with the old cached APP_VERSION). The silent
+    // check on load then re-detected the update and the chip reappeared —
+    // user had to tap a second time before the new SW was actually in
+    // charge. Fix: wait for `controllerchange` (fires when a new SW
+    // takes over) before reloading. 2.5s fallback in case it never fires
+    // (e.g. no new SW was actually published).
+    let didReload = false;
+    const reload = () => {
+      if (didReload) return;
+      didReload = true;
+      location.reload();
+    };
+    if (!('serviceWorker' in navigator) || !swReg){
+      reload(); return;
     }
-    location.reload();
+    try {
+      navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+      await swReg.update();
+      // If a newly-installed SW is sitting in waiting, nudge it forward.
+      // (Our install handler calls skipWaiting() so usually this isn't needed.)
+      if (swReg.waiting){
+        try { swReg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch(_) {}
+      }
+    } catch(_) {}
+    setTimeout(reload, 2500);
   }
   updateBtn.addEventListener('click', () => checkForUpdate(false));
   // Silent check on load (hosted only — file:// won't fetch raw.githubusercontent reliably anyway)

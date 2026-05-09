@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the shell changes; clients pick it up on next load.
  */
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const CACHE = `offline-audio-player-${CACHE_VERSION}`;
 
 const SHELL = [
@@ -25,6 +25,15 @@ self.addEventListener('install', event => {
     caches.open(CACHE).then(cache => cache.addAll(SHELL)).catch(() => {})
   );
   self.skipWaiting();
+});
+
+// Allows the page to nudge a waiting SW into activating immediately, used
+// by the in-app "update vX.Y.Z" chip so the new SW takes control before the
+// page reloads (otherwise the first reload is still served by the old SW).
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING'){
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', event => {
