@@ -133,18 +133,12 @@
     display: inline-flex; align-items: center; justify-content: center;
     width: 22px; height: 22px;
     border-radius: 50%;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
+    background: var(--accent-soft);
+    border: 1px solid var(--border-accent);
     font-size: 11px; font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--accent);
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
-    transition: background 150ms var(--ease), border-color 150ms var(--ease), color 150ms var(--ease);
-  }
-  .section-toggle[aria-expanded="true"] .step-num {
-    background: var(--accent-soft);
-    border-color: var(--border-accent);
-    color: var(--accent);
   }
   .step-title {
     flex: 1;
@@ -192,11 +186,7 @@
     padding: 14px 18px;
     border-bottom: 1px solid var(--border);
   }
-  .section-header .step-num {
-    background: var(--accent-soft);
-    border-color: var(--border-accent);
-    color: var(--accent);
-  }
+  /* (Note: .step-num is accent-styled by default for both .section-toggle and .section-header.) */
 
   label.small {
     display: block;
@@ -718,7 +708,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
