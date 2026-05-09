@@ -18,10 +18,30 @@ setlocal
 
 if /I "%~1"=="clean" goto :clean
 
-where pyinstaller >NUL 2>&1
+REM Find a working Python launcher. Prefer 'python' (most common on Windows
+REM after the python.org installer with PATH enabled), fall back to 'py'
+REM (the launcher Microsoft Store / older python.org installs ship).
+set PY=python
+where python >NUL 2>&1
+if errorlevel 1 set PY=py
+
+%PY% --version >NUL 2>&1
+if errorlevel 1 (
+    echo ERROR: Python not found on PATH (tried 'python' and 'py').
+    echo Install from python.org with "Add Python to PATH" checked,
+    echo or from the Microsoft Store, then close+reopen PowerShell and re-run.
+    exit /b 1
+)
+
+REM Make sure PyInstaller is importable. We invoke it via "python -m PyInstaller"
+REM rather than the bare 'pyinstaller' command — the latter requires the Python
+REM Scripts folder to be on PATH, which often isn't the case on default Windows
+REM Python installs and is what produced the "'pyinstaller' is not recognized"
+REM error people hit when running this script.
+%PY% -c "import PyInstaller" >NUL 2>&1
 if errorlevel 1 (
     echo PyInstaller not found. Installing...
-    python -m pip install --upgrade pyinstaller
+    %PY% -m pip install --upgrade pyinstaller
     if errorlevel 1 (
         echo ERROR: failed to install pyinstaller. Aborting.
         exit /b 1
@@ -29,7 +49,7 @@ if errorlevel 1 (
 )
 
 echo ----------------------------------------
-echo Building TTS_Converter.exe
+echo Building TTS_Converter.exe  (using %PY% -m PyInstaller)
 echo ----------------------------------------
 
 REM --onefile          : single .exe instead of a folder
@@ -38,7 +58,7 @@ REM --name             : output binary name
 REM --hidden-import    : modules PyInstaller's static analysis often misses
 REM --collect-submodules: pull in everything from packages with dynamic imports
 
-pyinstaller ^
+%PY% -m PyInstaller ^
     --noconfirm ^
     --onefile ^
     --windowed ^
