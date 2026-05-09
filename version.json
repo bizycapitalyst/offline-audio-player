@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.7.0",
   "released": "2026-05-09",
-  "notes": "(1) TTS speaking-sentence highlight now uses the theme's blue (matches the audio-progress active block); amber stays reserved for action buttons. All follow-along indicators share one visual language. (2) Follow toggle defaults to OFF on first launch; the user's choice is persisted to localStorage so once you turn it on, it stays on across sessions."
+  "notes": "(1) Follow highlight now actually obeys the Follow toggle. Active-block and TTS speaking-sentence classes are gated on followEnabled, and the toggle clears existing highlights when switched off / re-applies them when switched on. (2) Removed the dedicated Read-Aloud button bar from the transcript card. TTS for text-only tracks is driven entirely by the main Play/Pause button + sentence-click in the transcript. Voice / rate / pitch / pause-length controls remain in the TTS settings panel."
 }

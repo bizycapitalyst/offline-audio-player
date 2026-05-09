@@ -368,9 +368,6 @@
   }
   .transcript-header .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
-  .read-bar { display: flex; gap: 6px; margin-bottom: 12px; }
-  .read-bar button { font-size: 13px; padding: 10px 12px; }
-
   .transcript {
     background: var(--bg-tile);
     border: 1px solid var(--border-soft);
@@ -762,11 +759,6 @@
           <button class="icon" id="maximizeBtn" title="Maximize transcript">⤢</button>
         </div>
       </div>
-      <div class="read-bar">
-        <button id="readBtn" class="success" title="Read aloud (US English TTS, foreground only)">🗣 Read Aloud</button>
-        <button id="readPauseBtn" disabled title="Pause/Resume reading">⏸</button>
-        <button id="readStopBtn" disabled title="Stop reading">⏹</button>
-      </div>
       <div class="transcript" id="transcript">
         <div class="empty">No transcript loaded.</div>
       </div>
@@ -807,7 +799,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -848,9 +840,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   const updateBtn = $('updateBtn');
   const modeBadge = $('modeBadge');
 
-  const readBtn = $('readBtn');
-  const readPauseBtn = $('readPauseBtn');
-  const readStopBtn = $('readStopBtn');
+  // The dedicated Read-Aloud bar was removed; TTS is now driven entirely
+  // by the main Play/Pause button for text-only tracks. Voice / rate /
+  // pitch / pause controls remain in the TTS settings panel.
   const voiceSelect = $('voiceSelect');
   const rateSlider = $('rateSlider'), rateVal = $('rateVal');
   const pitchSlider = $('pitchSlider'), pitchVal = $('pitchVal');
@@ -1162,7 +1154,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       transcriptEl.innerHTML = '<div class="empty">No matching .txt / .md transcript for this track.</div>';
       transcriptTitle.textContent = 'Transcript';
     }
-    readBtn.disabled = !t.textRef;
     // Text-only tracks: auto-start TTS so pressing Play (or just selecting
     // the track) starts spoken playback, mirroring audio-file auto-play.
     if (t.kind === 'text' && t.textRef && ttsAvailable && autoplay){
@@ -1332,7 +1323,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     if (activeBlockEl === el) return;
     if (activeBlockEl) activeBlockEl.classList.remove('active');
     activeBlockEl = el;
-    if (el) el.classList.add('active');
+    // Only paint the highlight when Follow is engaged. The reference is
+    // tracked either way so re-engaging Follow re-applies the class.
+    if (el && followEnabled) el.classList.add('active');
   }
   function programmaticScrollTo(top){
     suppressScrollDetect = true;
@@ -1442,10 +1435,20 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     saveSession({ followEnabled });
     applyFollowVisual();
     if (followEnabled){
+      // Re-engage: re-apply highlight classes and scroll into view.
       userScrollPaused = false;
       resumePill.classList.remove('show');
+      if (activeBlockEl) activeBlockEl.classList.add('active');
+      if (ttsState.currentSpan) ttsState.currentSpan.classList.add('speaking');
       if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
       else { syncTranscriptToTime(); if (activeBlockEl) scrollElementIntoCenter(activeBlockEl); }
+    } else {
+      // Disengage: strip current highlights so nothing visually tracks
+      // playback while Follow is off. References are kept so re-engaging
+      // restores the highlight without recomputing.
+      if (activeBlockEl) activeBlockEl.classList.remove('active');
+      if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
+      resumePill.classList.remove('show');
     }
   });
 
@@ -1621,26 +1624,26 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     loadVoices();
     if (synth.onvoiceschanged !== undefined) synth.addEventListener('voiceschanged', loadVoices);
   } else {
-    readBtn.disabled = true;
     voiceSelect.innerHTML = '<option>Not available</option>';
   }
   rateSlider.addEventListener('input', () => { rateVal.textContent = (+rateSlider.value).toFixed(2) + '×'; });
   pitchSlider.addEventListener('input', () => { pitchVal.textContent = (+pitchSlider.value).toFixed(2); });
   pauseSlider.addEventListener('input', () => { pauseVal.textContent = pauseSlider.value + 'ms'; });
 
-  function setReadingControls(active){
-    readBtn.disabled = active;
-    readPauseBtn.disabled = !active;
-    readStopBtn.disabled = !active;
-    readPauseBtn.textContent = ttsState.paused ? '▶' : '⏸';
-    // Keep the main Play button label in sync for text-only tracks.
-    updatePlayPauseLabel();
-  }
+  // The Read-Aloud button bar was removed; this thin wrapper just refreshes
+  // the main Play/Pause button label so existing call sites keep working.
+  function setReadingControls(){ updatePlayPauseLabel(); }
   function highlightSpan(span){
     if (ttsState.currentSpan === span) return;
     if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
     ttsState.currentSpan = span;
-    if (span){ span.classList.add('speaking'); if (followEnabled && !userScrollPaused) scrollElementIntoCenter(span); }
+    // Only paint and scroll when Follow is engaged. The reference is still
+    // tracked so re-engaging Follow re-applies the highlight to whichever
+    // sentence is currently being spoken.
+    if (span && followEnabled){
+      span.classList.add('speaking');
+      if (!userScrollPaused) scrollElementIntoCenter(span);
+    }
   }
   function pauseAfter(span, baseMs){
     const text = (span.textContent || '').trim();
@@ -1757,9 +1760,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     else { ttsState.paused = false; try { synth.resume(); } catch(_) {} }
     setReadingControls(true);
   }
-  readBtn.addEventListener('click', () => startReading(0));
-  readPauseBtn.addEventListener('click', togglePauseReading);
-  readStopBtn.addEventListener('click', () => stopReading(false));
+  // No dedicated read-aloud listeners anymore — TTS lives on the main
+  // Play/Pause button + sentence clicks in the transcript.
 
   document.addEventListener('visibilitychange', () => {
     if (!ttsState.active) return;
@@ -1773,7 +1775,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   if (!('showDirectoryPicker' in window)){
     setStatus('This browser will use a multi-select picker — choose all audio + transcript files at once.', 'warn');
   }
-  readBtn.disabled = true;
 
   // Try to restore a previously selected folder. If browser permission for the
   // saved handle is still 'granted', load it silently. Otherwise show a
