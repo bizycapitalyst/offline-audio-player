@@ -711,7 +711,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -976,6 +976,13 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       transcriptTitle.textContent = 'Transcript';
     }
     readBtn.disabled = !t.textRef;
+    // Text-only tracks: auto-start TTS so pressing Play (or just selecting
+    // the track) starts spoken playback, mirroring audio-file auto-play.
+    if (t.kind === 'text' && t.textRef && ttsAvailable){
+      // Defer one frame so the rendered transcript is in the DOM.
+      requestAnimationFrame(() => startReading(0));
+    }
+    updatePlayPauseLabel();
   }
 
   // --- Transcript rendering ---
@@ -1085,13 +1092,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   const ABBREVS = ['Mr','Mrs','Ms','Dr','St','Prof','Jr','Sr','vs','etc','e\\.g','i\\.e','U\\.S','U\\.K','Inc','Ltd','Co','Corp','No','Vol','pp','Fig','Sec','Ch'];
   function splitSentences(text){
     if (!text || !text.trim()) return [];
-    const sentinel = '';
+    // Sentinel must be (a) a single character unlikely to appear in user text and
+    // (b) a literal non-empty value, otherwise the empty-regex replace at restore
+    // time inserts a '.' between every character.  (Start-of-Heading) is safe.
+    const SENTINEL = '';
     let protectedText = text;
     for (const a of ABBREVS){
-      protectedText = protectedText.replace(new RegExp(`\\b${a}\\.`, 'g'), m => m.replace('.', sentinel));
+      protectedText = protectedText.replace(new RegExp(`\\b${a}\\.`, 'g'), m => m.replace('.', SENTINEL));
     }
     const parts = protectedText.split(/(?<=[.!?…])\s+(?=[A-Z"'(“‘])/);
-    return parts.map(s => s.replace(new RegExp(sentinel, 'g'), '.')).map(s => s.trim()).filter(Boolean);
+    return parts.map(s => s.split(SENTINEL).join('.')).map(s => s.trim()).filter(Boolean);
   }
   function wrapSentencesForSpeech(root){
     const SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, h5, h6';
@@ -1215,11 +1225,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && transcriptCard.classList.contains('maximized')) setMaximized(false); });
 
   function updatePlayPauseLabel(){
-    const label = audioEl.paused ? '▶' : '⏸';
+    const t = tracks[currentIdx];
+    const isTextTrack = t && t.kind === 'text';
+    const playing = isTextTrack
+      ? (ttsState.active && !ttsState.paused)
+      : !audioEl.paused;
+    const label = playing ? '⏸' : '▶';
     playPauseBtn.textContent = label;
     $('playPauseBtn2').textContent = label;
     if ('mediaSession' in navigator){
-      try { navigator.mediaSession.playbackState = audioEl.paused ? 'paused' : 'playing'; } catch(_) {}
+      try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(_) {}
     }
   }
   function bindControl(id, handler){ const el = $(id); if (el) el.addEventListener('click', handler); }
@@ -1233,6 +1248,13 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   trackSelect.addEventListener('change', e => { const v = e.target.value; if (v === '') return; loadTrack(parseInt(v, 10)); });
 
   const playPause = () => {
+    const t = tracks[currentIdx];
+    // Text-only tracks: main play/pause drives the TTS engine.
+    if (t && t.kind === 'text' && t.textRef){
+      if (ttsState.active) togglePauseReading();
+      else startReading(0);
+      return;
+    }
     if (!audioEl.src){ if (tracks.length) loadTrack(0); return; }
     if (audioEl.paused) audioEl.play(); else audioEl.pause();
   };
@@ -1346,6 +1368,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     readPauseBtn.disabled = !active;
     readStopBtn.disabled = !active;
     readPauseBtn.textContent = ttsState.paused ? '▶' : '⏸';
+    // Keep the main Play button label in sync for text-only tracks.
+    updatePlayPauseLabel();
   }
   function highlightSpan(span){
     if (ttsState.currentSpan === span) return;

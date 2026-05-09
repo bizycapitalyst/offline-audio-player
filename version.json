@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "released": "2026-05-09",
-  "notes": "App icon: minimalist headphones glyph in accent on dark rounded square. Wired into manifest (any/192/512 sizes), favicon, apple-touch-icon, and Safari mask-icon. Service worker pre-caches the icon for offline."
+  "notes": "Fix two bugs: (1) the abbreviation-protection sentinel in splitSentences was an empty string, which caused the empty-regex restore to insert periods between every character of the rendered transcript; (2) text-only tracks now drive TTS from the main Play/Pause button and auto-start on track selection, mirroring how audio tracks auto-play."
 }
