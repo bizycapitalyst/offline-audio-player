@@ -31,3 +31,9 @@ desktop.ini
 # Transcripts placed in this folder for testing
 test/
 sample/
+
+# PyInstaller build artifacts (build_exe.bat output) — not part of the repo,
+# users build their own .exe locally
+build/
+dist/
+*.spec
