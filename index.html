@@ -711,7 +711,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1005,16 +1005,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     trackSelect.value = String(idx);
     setTrackStepStatus(`${idx + 1} of ${tracks.length}`, 'good');
 
-    // Persist the chosen track. Position fields are only valid when they
-    // belong to this same track — clear them on track change.
-    const prev = loadSession();
-    saveSession({
-      trackBaseName: t.baseName,
-      audioPosition: prev.trackBaseName === t.baseName ? prev.audioPosition : 0,
-      ttsIndex: prev.trackBaseName === t.baseName ? prev.ttsIndex : 0,
-    });
-    const resumeAudioPos = (prev.trackBaseName === t.baseName) ? (prev.audioPosition || 0) : 0;
-    const resumeTtsIdx   = (prev.trackBaseName === t.baseName) ? (prev.ttsIndex   || 0) : 0;
+    // Persist the chosen track baseName so we can re-select it next session.
+    saveSession({ trackBaseName: t.baseName });
 
     if (currentObjectURL){ URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
     if (t.audioRef){
@@ -1023,15 +1015,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         currentObjectURL = URL.createObjectURL(blob);
         audioEl.src = currentObjectURL;
         audioEl.playbackRate = SPEEDS[speedIdx];
-        if (resumeAudioPos > 0){
-          const seek = () => {
-            if (audioEl.duration && resumeAudioPos < audioEl.duration - 1){
-              audioEl.currentTime = resumeAudioPos;
-            }
-          };
-          if (audioEl.readyState >= 1) seek();
-          else audioEl.addEventListener('loadedmetadata', seek, { once: true });
-        }
         try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
         updatePlayPauseLabel();
         updateMediaSession(t);
@@ -1066,7 +1049,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     // the track) starts spoken playback, mirroring audio-file auto-play.
     if (t.kind === 'text' && t.textRef && ttsAvailable){
       // Defer one frame so the rendered transcript is in the DOM.
-      requestAnimationFrame(() => startReading(resumeTtsIdx));
+      requestAnimationFrame(() => startReading(0));
     }
     updatePlayPauseLabel();
   }
@@ -1272,30 +1255,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   audioEl.addEventListener('seeked', syncTranscriptToTime);
   audioEl.addEventListener('ratechange', syncTranscriptToTime);
 
-  // Throttled save of audio position so reopening resumes near where we left off.
-  let lastPosSave = 0;
-  audioEl.addEventListener('timeupdate', () => {
-    const now = Date.now();
-    if (now - lastPosSave < 3000) return;
-    lastPosSave = now;
-    if (audioEl.duration && Number.isFinite(audioEl.currentTime)){
-      saveSession({ audioPosition: audioEl.currentTime });
-    }
-  });
-  audioEl.addEventListener('pause', () => {
-    if (Number.isFinite(audioEl.currentTime) && audioEl.currentTime > 0){
-      saveSession({ audioPosition: audioEl.currentTime });
-    }
-  });
-  window.addEventListener('beforeunload', () => {
-    if (audioEl.src && Number.isFinite(audioEl.currentTime) && audioEl.currentTime > 0){
-      saveSession({ audioPosition: audioEl.currentTime });
-    }
-    if (ttsState.active && Number.isFinite(ttsState.index)){
-      saveSession({ ttsIndex: ttsState.index });
-    }
-  });
-
   transcriptEl.addEventListener('scroll', () => {
     if (suppressScrollDetect) return;
     if (!followEnabled) return;
@@ -1413,7 +1372,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     loopBtn.textContent = 'Loop: ' + (loopMode===0?'Off':loopMode===1?'One':'All');
   });
   audioEl.addEventListener('ended', () => {
-    saveSession({ audioPosition: 0 });  // don't resume at the very end next time
     if (loopMode === 1) return;
     if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length);
     else if (currentIdx + 1 < tracks.length) loadTrack(currentIdx + 1);
@@ -1571,14 +1529,11 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         }
       }
       ttsState.index++;
-      saveSession({ ttsIndex: ttsState.index });
     }
     stopWatchdog();
     if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
     ttsState.currentSpan = null;
-    const reachedEnd = ttsState.index >= ttsState.sentences.length;
     ttsState.active = false; ttsState.paused = false; ttsState.cancelling = false;
-    if (reachedEnd) saveSession({ ttsIndex: 0 });  // start fresh next time
     setReadingControls(false);
   }
 
@@ -1596,9 +1551,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function stopReading(silent){
     if (!ttsState.active && !(synth && synth.speaking)) return;
-    if (Number.isFinite(ttsState.index)){
-      saveSession({ ttsIndex: ttsState.index });
-    }
     ttsState.cancelling = true;
     ttsState.paused = false;
     try { synth.cancel(); } catch(_) {}
