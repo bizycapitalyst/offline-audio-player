@@ -194,7 +194,6 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk() if _HAS_DND else tk.Tk()
         self.root.title(APP_TITLE)
-        self.root.geometry("700x620")
         self.root.minsize(580, 500)
 
         self._apply_theme()
@@ -204,7 +203,31 @@ class App:
         self.worker = _Worker(on_message=self._on_worker_message)
 
         self._build_ui()
+        # Size the window to fit the whole interface, or the screen height,
+        # whichever is smaller. Has to run AFTER _build_ui so every widget
+        # has reported its requested size to Tk's geometry manager.
+        self._size_to_content()
         self._poll_queue()
+
+    def _size_to_content(self):
+        """Open the window at min(natural-content-height, available-screen-height).
+        The natural width is what _build_ui asks for, clamped to a sane minimum.
+        Position roughly centered horizontally and a little down from the top."""
+        self.root.update_idletasks()
+        # winfo_reqwidth/reqheight = the size the layout would prefer
+        want_w = max(self.root.winfo_reqwidth(), 700)
+        want_h = self.root.winfo_reqheight()
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        # Leave headroom for the OS title bar + taskbar so the window
+        # isn't flush with the screen edge.
+        safe_h = screen_h - 100
+        safe_w = screen_w - 60
+        w = min(max(want_w, 580), safe_w)
+        h = min(max(want_h, 500), safe_h)
+        x = (screen_w - w) // 2
+        y = max(20, (screen_h - h) // 4)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
     def _apply_theme(self):
         """Apply a dark theme matching the Spanish Trainer / Audio Player
