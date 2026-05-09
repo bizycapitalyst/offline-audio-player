@@ -1,5 +1,5 @@
 {
-  "version": "1.7.2",
+  "version": "1.7.3",
   "released": "2026-05-09",
-  "notes": "(1) Header chip now shows the running version (e.g. v1.7.2) instead of the static 'OFFLINE' label. When a newer release is detected the chip flips to 'update vX.Y.Z' (green, clickable). (2) Tapping the update chip used to require two presses to actually take effect — the first reload was served by the still-old service worker. applyUpdate now waits for the new SW's controllerchange event (with a 2.5s fallback) before reloading, so a single tap reliably applies the update. SW cache bumped to v7."
+  "notes": "(1) Follow highlights are more visible — bumped the active-block / speaking-sentence background from 13% to 22% blue, and thickened the left accent bar from 2px to 3px. (2) Follow chip color tracks state: amber/yellow when off (idle, inviting tap), blue when on (active, matches the follow-along highlight)."
 }

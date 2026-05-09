@@ -308,18 +308,20 @@
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
   }
-  /* Follow chip uses the theme's blue (matches the follow-along highlight
-     color) in both states, so it always reads as "this is the follow
-     control". Off = subtle blue pill, On = solid filled blue. */
+  /* Follow chip color tracks state:
+       OFF (idle / "you can turn this on") = theme amber/yellow pill
+       ON  (engaged / "follow is active")  = theme blue (matches the
+       follow-along highlight color so the chip and the highlight read
+       as the same feature). */
   button#followBtn {
-    background: var(--blue-soft);
-    border-color: rgba(96,165,250,0.4);
-    color: var(--blue);
+    background: var(--accent-soft);
+    border-color: rgba(251,191,36,0.4);
+    color: var(--accent);
   }
   button#followBtn:hover:not(:disabled) {
-    background: rgba(96,165,250,0.20);
-    border-color: var(--blue);
-    color: var(--blue);
+    background: rgba(251,191,36,0.20);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   button#followBtn.toggled {
     background: var(--blue);
@@ -475,8 +477,8 @@
     transition: background 200ms var(--ease);
   }
   .transcript .ts-block.active {
-    background: var(--blue-soft);
-    box-shadow: inset 2px 0 0 var(--blue);
+    background: rgba(96, 165, 250, 0.22);
+    box-shadow: inset 3px 0 0 var(--blue);
   }
   .transcript .ts-tag {
     display: inline-block;
@@ -503,8 +505,8 @@
     transition: background 200ms var(--ease);
   }
   .transcript .ts-sentence.speaking {
-    background: var(--blue-soft);
-    box-shadow: inset 2px 0 0 var(--blue);
+    background: rgba(96, 165, 250, 0.22);
+    box-shadow: inset 3px 0 0 var(--blue);
   }
 
   .empty {
@@ -821,7 +823,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.2';
+const APP_VERSION = '1.7.3';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
