@@ -1,5 +1,5 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "released": "2026-05-09",
-  "notes": "Fix two bugs: (1) the abbreviation-protection sentinel in splitSentences was an empty string, which caused the empty-regex restore to insert periods between every character of the rendered transcript; (2) text-only tracks now drive TTS from the main Play/Pause button and auto-start on track selection, mirroring how audio tracks auto-play."
+  "notes": "Session persistence: folder selection (FileSystemDirectoryHandle in IndexedDB), last-played track baseName, audio playback position, and TTS sentence index are saved across closes. On reopen, if the browser still grants permission to the saved folder it loads silently; otherwise a 'Resume previous folder' button appears that re-requests permission with a single tap."
 }

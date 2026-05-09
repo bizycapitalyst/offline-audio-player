@@ -711,7 +711,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -779,6 +779,60 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   function baseName(name){ const i = name.lastIndexOf('.'); return i === -1 ? name : name.slice(0,i); }
   function setStatus(msg, cls=''){ folderStatus.textContent = msg; folderStatus.className = 'status' + (cls ? ' ' + cls : ''); }
 
+  // --- Persistence ---------------------------------------------------------
+  // Folder handle (FileSystemDirectoryHandle) is stored in IndexedDB —
+  // localStorage can only hold strings. Track + playback position go in
+  // localStorage as a small JSON blob.
+  const DB_NAME = 'oap-db';
+  const DB_STORE = 'kv';
+  const HANDLE_KEY = 'folderHandle';
+  const SESSION_KEY = 'oap.session';
+  function openIDB(){
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(DB_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbPut(k, v){
+    const db = await openIDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(v, k);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  async function idbGet(k){
+    const db = await openIDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const r = tx.objectStore(DB_STORE).get(k);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  async function idbDel(k){
+    const db = await openIDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).delete(k);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  function loadSession(){
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}'); }
+    catch(_) { return {}; }
+  }
+  function saveSession(partial){
+    const cur = loadSession();
+    const merged = { ...cur, ...partial };
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(merged)); } catch(_) {}
+  }
+  let pendingHandle = null;  // saved handle awaiting permission re-grant
+
   // --- Section 1 (folder) collapse/expand ---
   const folderToggle = $('folderToggle');
   const folderStepStatus = $('folderStepStatus');
@@ -845,6 +899,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     try {
       const handle = await window.showDirectoryPicker({ mode: 'read' });
       dirHandle = handle;
+      try { await idbPut(HANDLE_KEY, handle); } catch(_) {}
+      pendingHandle = null;
+      pickBtn.textContent = 'Pick folder';
       await scanDir();
       rescanBtn.disabled = false;
     } catch (err) {
@@ -920,6 +977,15 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       setFolderStepStatus(`${audioCount} audio · ${trcount} text`, 'good');
       setFolderExpanded(false);
       setTrackStepStatus(`${tracks.length} track${tracks.length===1?'':'s'}`, 'good');
+      // Auto-select the previously played track if it's still present.
+      const saved = loadSession();
+      if (saved.trackBaseName){
+        const i = tracks.findIndex(tr => tr.baseName === saved.trackBaseName);
+        if (i >= 0){
+          // Defer one frame so the dropdown is fully populated.
+          requestAnimationFrame(() => loadTrack(i));
+        }
+      }
     }
   }
 
@@ -939,6 +1005,17 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     trackSelect.value = String(idx);
     setTrackStepStatus(`${idx + 1} of ${tracks.length}`, 'good');
 
+    // Persist the chosen track. Position fields are only valid when they
+    // belong to this same track — clear them on track change.
+    const prev = loadSession();
+    saveSession({
+      trackBaseName: t.baseName,
+      audioPosition: prev.trackBaseName === t.baseName ? prev.audioPosition : 0,
+      ttsIndex: prev.trackBaseName === t.baseName ? prev.ttsIndex : 0,
+    });
+    const resumeAudioPos = (prev.trackBaseName === t.baseName) ? (prev.audioPosition || 0) : 0;
+    const resumeTtsIdx   = (prev.trackBaseName === t.baseName) ? (prev.ttsIndex   || 0) : 0;
+
     if (currentObjectURL){ URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
     if (t.audioRef){
       try {
@@ -946,7 +1023,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         currentObjectURL = URL.createObjectURL(blob);
         audioEl.src = currentObjectURL;
         audioEl.playbackRate = SPEEDS[speedIdx];
-        try { await audioEl.play(); } catch(_) {}
+        if (resumeAudioPos > 0){
+          const seek = () => {
+            if (audioEl.duration && resumeAudioPos < audioEl.duration - 1){
+              audioEl.currentTime = resumeAudioPos;
+            }
+          };
+          if (audioEl.readyState >= 1) seek();
+          else audioEl.addEventListener('loadedmetadata', seek, { once: true });
+        }
+        try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
         updatePlayPauseLabel();
         updateMediaSession(t);
       } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
@@ -980,7 +1066,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     // the track) starts spoken playback, mirroring audio-file auto-play.
     if (t.kind === 'text' && t.textRef && ttsAvailable){
       // Defer one frame so the rendered transcript is in the DOM.
-      requestAnimationFrame(() => startReading(0));
+      requestAnimationFrame(() => startReading(resumeTtsIdx));
     }
     updatePlayPauseLabel();
   }
@@ -1186,6 +1272,30 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   audioEl.addEventListener('seeked', syncTranscriptToTime);
   audioEl.addEventListener('ratechange', syncTranscriptToTime);
 
+  // Throttled save of audio position so reopening resumes near where we left off.
+  let lastPosSave = 0;
+  audioEl.addEventListener('timeupdate', () => {
+    const now = Date.now();
+    if (now - lastPosSave < 3000) return;
+    lastPosSave = now;
+    if (audioEl.duration && Number.isFinite(audioEl.currentTime)){
+      saveSession({ audioPosition: audioEl.currentTime });
+    }
+  });
+  audioEl.addEventListener('pause', () => {
+    if (Number.isFinite(audioEl.currentTime) && audioEl.currentTime > 0){
+      saveSession({ audioPosition: audioEl.currentTime });
+    }
+  });
+  window.addEventListener('beforeunload', () => {
+    if (audioEl.src && Number.isFinite(audioEl.currentTime) && audioEl.currentTime > 0){
+      saveSession({ audioPosition: audioEl.currentTime });
+    }
+    if (ttsState.active && Number.isFinite(ttsState.index)){
+      saveSession({ ttsIndex: ttsState.index });
+    }
+  });
+
   transcriptEl.addEventListener('scroll', () => {
     if (suppressScrollDetect) return;
     if (!followEnabled) return;
@@ -1239,7 +1349,27 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function bindControl(id, handler){ const el = $(id); if (el) el.addEventListener('click', handler); }
 
-  pickBtn.addEventListener('click', () => {
+  pickBtn.addEventListener('click', async () => {
+    // If we have a saved folder handle from a previous session that just needs
+    // permission re-granted, try that first — the user clicking "Resume
+    // previous folder" satisfies the user-gesture requirement for requestPermission.
+    if (pendingHandle && pendingHandle.requestPermission){
+      try {
+        const perm = await pendingHandle.requestPermission({ mode: 'read' });
+        if (perm === 'granted'){
+          dirHandle = pendingHandle;
+          pendingHandle = null;
+          pickBtn.textContent = 'Pick folder';
+          rescanBtn.disabled = false;
+          await scanDir();
+          return;
+        }
+      } catch(_) {}
+      // Permission declined — clear and fall through to fresh picker.
+      pendingHandle = null;
+      pickBtn.textContent = 'Pick folder';
+      try { await idbDel(HANDLE_KEY); } catch(_) {}
+    }
     if ('showDirectoryPicker' in window) pickWithFSAccess();
     else pickWithInput();
   });
@@ -1283,6 +1413,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     loopBtn.textContent = 'Loop: ' + (loopMode===0?'Off':loopMode===1?'One':'All');
   });
   audioEl.addEventListener('ended', () => {
+    saveSession({ audioPosition: 0 });  // don't resume at the very end next time
     if (loopMode === 1) return;
     if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length);
     else if (currentIdx + 1 < tracks.length) loadTrack(currentIdx + 1);
@@ -1440,11 +1571,14 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         }
       }
       ttsState.index++;
+      saveSession({ ttsIndex: ttsState.index });
     }
     stopWatchdog();
     if (ttsState.currentSpan) ttsState.currentSpan.classList.remove('speaking');
     ttsState.currentSpan = null;
+    const reachedEnd = ttsState.index >= ttsState.sentences.length;
     ttsState.active = false; ttsState.paused = false; ttsState.cancelling = false;
+    if (reachedEnd) saveSession({ ttsIndex: 0 });  // start fresh next time
     setReadingControls(false);
   }
 
@@ -1462,6 +1596,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function stopReading(silent){
     if (!ttsState.active && !(synth && synth.speaking)) return;
+    if (Number.isFinite(ttsState.index)){
+      saveSession({ ttsIndex: ttsState.index });
+    }
     ttsState.cancelling = true;
     ttsState.paused = false;
     try { synth.cancel(); } catch(_) {}
@@ -1494,6 +1631,33 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     setStatus('This browser will use a multi-select picker — choose all audio + transcript files at once.', 'warn');
   }
   readBtn.disabled = true;
+
+  // Try to restore a previously selected folder. If browser permission for the
+  // saved handle is still 'granted', load it silently. Otherwise show a
+  // "Resume previous folder" CTA so the user-gesture click can re-grant it.
+  (async () => {
+    if (!('showDirectoryPicker' in window) || !('indexedDB' in window)) return;
+    let handle;
+    try { handle = await idbGet(HANDLE_KEY); } catch(_) {}
+    if (!handle || typeof handle.queryPermission !== 'function') return;
+    let perm = 'prompt';
+    try { perm = await handle.queryPermission({ mode: 'read' }); } catch(_) {}
+    if (perm === 'granted'){
+      dirHandle = handle;
+      rescanBtn.disabled = false;
+      setStatus('Restoring previous folder…');
+      await scanDir();
+    } else if (perm === 'prompt'){
+      pendingHandle = handle;
+      pickBtn.textContent = 'Resume previous folder';
+      setFolderExpanded(true);
+      setFolderStepStatus('previous folder', 'good');
+      setStatus('Tap "Resume previous folder" to restore the folder you used last time, or pick a new one.');
+    } else {
+      // denied — drop it so we don't keep prompting forever
+      try { await idbDel(HANDLE_KEY); } catch(_) {}
+    }
+  })();
 })();
 </script>
 </body>
