@@ -1,5 +1,5 @@
 {
-  "version": "1.9.3",
+  "version": "1.9.4",
   "released": "2026-05-09",
-  "notes": "Diagnostics + Samsung guidance for the persistent 'audio cuts out on background' issue. Added a 'Diagnostic log' details section in the folder card that captures every audio-element lifecycle event (play/pause/playing/waiting/stalled/suspend/emptied/error), every visibility/focus/page-show-hide/freeze/resume event, and the audio's current time + paused state at each event. Persisted to localStorage so the log survives page kill. Also added a 'Samsung phones — required settings' help section pointing at One UI's Sleeping apps / Background usage limits / Adaptive battery / Auto-optimization toggles that override Chrome's Unrestricted setting."
+  "notes": "Expanded diagnostic log to capture (a) play() promise outcomes — audio.play() is wrapped to log play():call / play():resolved / play():reject(reason) so we can see if the audio element is even attempting playback; (b) loadTrack entries logging the track kind (audio vs text), so the log clearly distinguishes audio-file tracks from TTS-driven text-only tracks; (c) TTS lifecycle — tts:start, tts:pause, tts:resume, tts:stop — so we can tell whether what's pausing on background is the audio element or the speech engine. The previous log was silent for users on text-only tracks because TTS doesn't go through the audio element."
 }

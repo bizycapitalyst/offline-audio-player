@@ -968,7 +968,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.3';
+const APP_VERSION = '1.9.4';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1359,6 +1359,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     trackSelect.value = String(idx);
     setTrackStepStatus(`${idx + 1} of ${tracks.length}`, 'good');
     updateSkipButtonsForTrack(t);
+    try { diagLog && diagLog(`loadTrack: kind=${t.kind} ap=${opts.autoplay !== false ? 1 : 0} name=${t.baseName.slice(0,30)}`); } catch(_) {}
 
     // Persist the chosen track baseName so we can re-select it next session.
     saveSession({ trackBaseName: t.baseName });
@@ -1385,7 +1386,15 @@ document.getElementById('appVersion').textContent = APP_VERSION;
           if ('mediaSession' in navigator){
             try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
           }
-          try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
+          // Log play attempts so the diagnostic log shows whether play() was
+          // even called and whether the promise resolved or rejected.
+          try { diagLog && diagLog('play():call (loadTrack autoplay)'); } catch(_) {}
+          try {
+            await audioEl.play();
+            try { diagLog && diagLog('play():resolved'); } catch(_) {}
+          } catch(err){
+            try { diagLog && diagLog('play():reject ' + (err && err.name) + ' / ' + (err && err.message || '').slice(0, 60)); } catch(_) {}
+          }
         }
         updatePlayPauseLabel();
       } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
@@ -1880,12 +1889,20 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       else startReading(0);
       return;
     }
-    if (!audioEl.src){ if (tracks.length) loadTrack(0); return; }
+    if (!audioEl.src){
+      try { diagLog && diagLog('playPause: no src, loading 0'); } catch(_) {}
+      if (tracks.length) loadTrack(0);
+      return;
+    }
     if (audioEl.paused){
       if ('mediaSession' in navigator){
         try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
       }
-      audioEl.play();
+      try { diagLog && diagLog('play():call (button)'); } catch(_) {}
+      audioEl.play().then(
+        () => { try { diagLog && diagLog('play():resolved'); } catch(_) {} },
+        (err) => { try { diagLog && diagLog('play():reject ' + (err && err.name) + ' / ' + (err && err.message || '').slice(0, 60)); } catch(_) {} }
+      );
     } else {
       audioEl.pause();
     }
@@ -2294,6 +2311,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     ttsState.sentences = allSpans;
     ttsState.index = Math.max(0, Math.min(fromIndex, allSpans.length - 1));
     setReadingControls(true);
+    try { diagLog && diagLog(`tts:start from=${ttsState.index} of=${allSpans.length}`); } catch(_) {}
     // Bump the generation so any in-flight runTtsLoop bails on its next
     // checkpoint. Pass the new generation to the new loop so it knows
     // which token it's responsible for.
@@ -2301,6 +2319,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function stopReading(silent){
     if (!ttsState.active && !(synth && synth.speaking)) return;
+    try { diagLog && diagLog('tts:stop silent=' + (silent ? 1 : 0)); } catch(_) {}
     ttsState.cancelling = true;
     ttsState.paused = false;
     try { synth.cancel(); } catch(_) {}
@@ -2312,8 +2331,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function togglePauseReading(){
     if (!ttsState.active) return;
-    if (!ttsState.paused){ ttsState.paused = true; try { synth.pause(); } catch(_) {} }
-    else { ttsState.paused = false; try { synth.resume(); } catch(_) {} }
+    if (!ttsState.paused){
+      ttsState.paused = true;
+      try { synth.pause(); } catch(_) {}
+      try { diagLog && diagLog('tts:pause'); } catch(_) {}
+    }
+    else {
+      ttsState.paused = false;
+      try { synth.resume(); } catch(_) {}
+      try { diagLog && diagLog('tts:resume'); } catch(_) {}
+    }
     setReadingControls(true);
   }
   // No dedicated read-aloud listeners anymore — TTS lives on the main
