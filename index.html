@@ -866,17 +866,6 @@
           If audio still cuts on background after these are set, expand the <i>Diagnostic log</i> below right after a cut-out and copy the contents — the events around the cut-out tell us whether the OS killed the page (no events at the cut-out) or paused the audio element via Media Session (a <code>pause</code> event appears).
         </div>
       </details>
-      <details id="diagDetails">
-        <summary>Diagnostic log</summary>
-        <div class="help" style="font-size: 11px;">
-          Last 200 audio-element + visibility events with timestamps. Reproduce a cut-out, then expand this and tap Copy.
-        </div>
-        <pre id="diagLog" style="max-height: 220px; overflow: auto; background: var(--bg); padding: 8px 10px; border-radius: var(--radius-sm); font-size: 10.5px; line-height: 1.4; margin-top: 8px; font-family: 'SF Mono','Monaco','Consolas',monospace; color: var(--text-mid); white-space: pre-wrap; word-break: break-all;"></pre>
-        <div class="row" style="margin-top: 8px">
-          <button id="diagCopy">Copy log</button>
-          <button id="diagClear">Clear</button>
-        </div>
-      </details>
       <div class="version-line">
         <span id="versionLine">v<span id="appVersion">…</span></span>
         <button id="updateBtn">Check for updates</button>
@@ -968,7 +957,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.4';
+const APP_VERSION = '1.9.5';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1359,7 +1348,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     trackSelect.value = String(idx);
     setTrackStepStatus(`${idx + 1} of ${tracks.length}`, 'good');
     updateSkipButtonsForTrack(t);
-    try { diagLog && diagLog(`loadTrack: kind=${t.kind} ap=${opts.autoplay !== false ? 1 : 0} name=${t.baseName.slice(0,30)}`); } catch(_) {}
 
     // Persist the chosen track baseName so we can re-select it next session.
     saveSession({ trackBaseName: t.baseName });
@@ -1386,15 +1374,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
           if ('mediaSession' in navigator){
             try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
           }
-          // Log play attempts so the diagnostic log shows whether play() was
-          // even called and whether the promise resolved or rejected.
-          try { diagLog && diagLog('play():call (loadTrack autoplay)'); } catch(_) {}
-          try {
-            await audioEl.play();
-            try { diagLog && diagLog('play():resolved'); } catch(_) {}
-          } catch(err){
-            try { diagLog && diagLog('play():reject ' + (err && err.name) + ' / ' + (err && err.message || '').slice(0, 60)); } catch(_) {}
-          }
+          try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
         }
         updatePlayPauseLabel();
       } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
@@ -1675,79 +1655,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     audioStateEl.className = 'audio-state' + (cls ? ' ' + cls : '');
   }
 
-  // --- Diagnostic event log ---
-  // Persisted to localStorage so it survives page suspension / kill /
-  // restart on aggressive Android OEMs (Samsung One UI in particular).
-  // Reproducing a background-pause and reading this log tells us
-  // whether the audio element was paused mid-flight (Media Session
-  // pause event appears) or the whole page was frozen/killed (gap
-  // with no events at the moment of cut-out).
-  const DIAG_KEY = 'oap.diaglog';
-  const diagLogEl = document.getElementById('diagLog');
-  function diagLog(msg){
-    try {
-      const log = JSON.parse(localStorage.getItem(DIAG_KEY) || '[]');
-      const now = new Date();
-      log.push({
-        t: now.toISOString().slice(11, 23),
-        msg,
-        h: document.hidden ? 1 : 0,
-        p: audioEl.paused ? 1 : 0,
-        s: audioEl.currentTime ? +audioEl.currentTime.toFixed(2) : 0,
-      });
-      while (log.length > 200) log.shift();
-      localStorage.setItem(DIAG_KEY, JSON.stringify(log));
-      renderDiagLog();
-    } catch(_) {}
-  }
-  function renderDiagLog(){
-    if (!diagLogEl) return;
-    try {
-      const log = JSON.parse(localStorage.getItem(DIAG_KEY) || '[]');
-      diagLogEl.textContent = log.length
-        ? log.map(e => `${e.t}  ${e.msg.padEnd(20)} h=${e.h} p=${e.p} s=${e.s}`).join('\n')
-        : '(empty — play audio and reproduce the issue, events appear here)';
-    } catch(_) { diagLogEl.textContent = '(log read failed)'; }
-  }
-  renderDiagLog();
-  audioEl.addEventListener('play',     () => diagLog('audio:play'));
-  audioEl.addEventListener('pause',    () => diagLog('audio:pause'));
-  audioEl.addEventListener('playing',  () => diagLog('audio:playing'));
-  audioEl.addEventListener('waiting',  () => diagLog('audio:waiting'));
-  audioEl.addEventListener('stalled',  () => diagLog('audio:stalled'));
-  audioEl.addEventListener('suspend',  () => diagLog('audio:suspend'));
-  audioEl.addEventListener('emptied',  () => diagLog('audio:emptied'));
-  audioEl.addEventListener('ended',    () => diagLog('audio:ended'));
-  audioEl.addEventListener('error',    () => diagLog('audio:error code=' + (audioEl.error && audioEl.error.code)));
-  audioEl.addEventListener('loadstart',() => diagLog('audio:loadstart'));
-  audioEl.addEventListener('canplay',  () => diagLog('audio:canplay'));
-  document.addEventListener('visibilitychange', () => diagLog('vis:' + document.visibilityState));
-  window.addEventListener('focus',     () => diagLog('win:focus'));
-  window.addEventListener('blur',      () => diagLog('win:blur'));
-  window.addEventListener('pageshow',  () => diagLog('page:show'));
-  window.addEventListener('pagehide',  () => diagLog('page:hide'));
-  // The Page Lifecycle 'freeze' / 'resume' events will tell us if Samsung
-  // is actually freezing the page — that's what we suspect on the S26.
-  document.addEventListener('freeze',  () => diagLog('lifecycle:freeze'));
-  document.addEventListener('resume',  () => diagLog('lifecycle:resume'));
-  // Wire up the Copy / Clear buttons
-  const diagCopyBtn = document.getElementById('diagCopy');
-  const diagClearBtn = document.getElementById('diagClear');
-  if (diagCopyBtn) diagCopyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(localStorage.getItem(DIAG_KEY) || '[]');
-      diagCopyBtn.textContent = 'Copied ✓';
-      setTimeout(() => { diagCopyBtn.textContent = 'Copy log'; }, 1200);
-    } catch(_) {
-      diagCopyBtn.textContent = 'Copy failed';
-      setTimeout(() => { diagCopyBtn.textContent = 'Copy log'; }, 1200);
-    }
-  });
-  if (diagClearBtn) diagClearBtn.addEventListener('click', () => {
-    localStorage.removeItem(DIAG_KEY);
-    renderDiagLog();
-  });
-  diagLog('init v' + APP_VERSION);
   audioEl.addEventListener('loadstart',   () => setAudioState('loading'));
   audioEl.addEventListener('loadedmetadata', () => setAudioState('ready'));
   audioEl.addEventListener('canplay',     () => setAudioState(''));
@@ -1889,20 +1796,12 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       else startReading(0);
       return;
     }
-    if (!audioEl.src){
-      try { diagLog && diagLog('playPause: no src, loading 0'); } catch(_) {}
-      if (tracks.length) loadTrack(0);
-      return;
-    }
+    if (!audioEl.src){ if (tracks.length) loadTrack(0); return; }
     if (audioEl.paused){
       if ('mediaSession' in navigator){
         try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
       }
-      try { diagLog && diagLog('play():call (button)'); } catch(_) {}
-      audioEl.play().then(
-        () => { try { diagLog && diagLog('play():resolved'); } catch(_) {} },
-        (err) => { try { diagLog && diagLog('play():reject ' + (err && err.name) + ' / ' + (err && err.message || '').slice(0, 60)); } catch(_) {} }
-      );
+      audioEl.play().catch(()=>{});
     } else {
       audioEl.pause();
     }
@@ -2311,7 +2210,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     ttsState.sentences = allSpans;
     ttsState.index = Math.max(0, Math.min(fromIndex, allSpans.length - 1));
     setReadingControls(true);
-    try { diagLog && diagLog(`tts:start from=${ttsState.index} of=${allSpans.length}`); } catch(_) {}
     // Bump the generation so any in-flight runTtsLoop bails on its next
     // checkpoint. Pass the new generation to the new loop so it knows
     // which token it's responsible for.
@@ -2319,7 +2217,6 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function stopReading(silent){
     if (!ttsState.active && !(synth && synth.speaking)) return;
-    try { diagLog && diagLog('tts:stop silent=' + (silent ? 1 : 0)); } catch(_) {}
     ttsState.cancelling = true;
     ttsState.paused = false;
     try { synth.cancel(); } catch(_) {}
@@ -2334,12 +2231,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     if (!ttsState.paused){
       ttsState.paused = true;
       try { synth.pause(); } catch(_) {}
-      try { diagLog && diagLog('tts:pause'); } catch(_) {}
-    }
-    else {
+    } else {
       ttsState.paused = false;
       try { synth.resume(); } catch(_) {}
-      try { diagLog && diagLog('tts:resume'); } catch(_) {}
     }
     setReadingControls(true);
   }

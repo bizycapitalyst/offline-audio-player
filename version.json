@@ -1,5 +1,5 @@
 {
-  "version": "1.9.4",
+  "version": "1.9.5",
   "released": "2026-05-09",
-  "notes": "Expanded diagnostic log to capture (a) play() promise outcomes — audio.play() is wrapped to log play():call / play():resolved / play():reject(reason) so we can see if the audio element is even attempting playback; (b) loadTrack entries logging the track kind (audio vs text), so the log clearly distinguishes audio-file tracks from TTS-driven text-only tracks; (c) TTS lifecycle — tts:start, tts:pause, tts:resume, tts:stop — so we can tell whether what's pausing on background is the audio element or the speech engine. The previous log was silent for users on text-only tracks because TTS doesn't go through the audio element."
+  "notes": "Strip the temporary diagnostic instrumentation that was added in v1.9.3 / v1.9.4 to triage the background-pause issue. Removed: the 'Diagnostic log' details panel, the diagLog function and its localStorage capture, all event-listener instrumentation (audio play/pause/playing/waiting/stalled/suspend/emptied/error/loadstart/canplay/ended, visibilitychange, focus/blur, pageshow/pagehide, lifecycle freeze/resume), and inline diagLog() calls in loadTrack / playPause / autoplay path / TTS lifecycle. Samsung-help section retained as ongoing user guidance."
 }
