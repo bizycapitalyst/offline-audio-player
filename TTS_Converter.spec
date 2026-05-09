@@ -3,12 +3,13 @@ from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 
 datas = []
-hiddenimports = ['edge_tts', 'edge_tts.communicate', 'edge_tts.constants', 'edge_tts.drm', 'edge_tts.exceptions', 'edge_tts.list_voices', 'edge_tts.submaker', 'edge_tts.typing', 'edge_tts.util', 'edge_tts.tts_config', 'certifi', 'charset_normalizer', 'docx', 'pypdf', 'ebooklib', 'bs4']
+hiddenimports = ['edge_tts', 'edge_tts.communicate', 'edge_tts.constants', 'edge_tts.drm', 'edge_tts.exceptions', 'edge_tts.list_voices', 'edge_tts.submaker', 'edge_tts.typing', 'edge_tts.util', 'edge_tts.tts_config', 'certifi', 'charset_normalizer', 'docx', 'pypdf', 'ebooklib', 'bs4', 'deep_translator', 'deep_translator.google', 'deep_translator.constants', 'deep_translator.exceptions']
 datas += collect_data_files('certifi')
 hiddenimports += collect_submodules('edge_tts')
 hiddenimports += collect_submodules('docx')
 hiddenimports += collect_submodules('pypdf')
 hiddenimports += collect_submodules('ebooklib')
+hiddenimports += collect_submodules('deep_translator')
 
 
 a = Analysis(

@@ -194,18 +194,10 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk() if _HAS_DND else tk.Tk()
         self.root.title(APP_TITLE)
-        self.root.geometry("680x560")
-        self.root.minsize(560, 480)
+        self.root.geometry("700x620")
+        self.root.minsize(580, 500)
 
-        # Try a dark-ish theme; falls back to default on platforms without it
-        try:
-            style = ttk.Style()
-            for theme in ("vista", "clam", "default"):
-                if theme in style.theme_names():
-                    style.theme_use(theme)
-                    break
-        except Exception:
-            pass
+        self._apply_theme()
 
         self.files: list[str] = []
         self.output_dir: Path | None = None
@@ -214,35 +206,194 @@ class App:
         self._build_ui()
         self._poll_queue()
 
+    def _apply_theme(self):
+        """Apply a dark theme matching the Spanish Trainer / Audio Player
+        visual language: layered near-black surfaces, amber accent, muted
+        text hierarchy, uppercase title chips. Tkinter doesn't do CSS so
+        every widget class needs explicit ttk.Style configuration plus
+        manual bg/fg on the few raw tk widgets (Listbox, Text)."""
+        # Color tokens — match spanish_app/index.html :root values
+        T = {
+            'bg':         '#0a0a0d',
+            'bg_card':    '#16161d',
+            'bg_tile':    '#1c1c25',
+            'bg_input':   '#1f1f29',
+            'bg_hover':   '#23232f',
+            'border':     '#26262f',
+            'border_soft':'#1e1e26',
+            'text':       '#ededf0',
+            'text_mid':   '#a8a8b3',
+            'text_dim':   '#6a6a76',
+            'accent':     '#fbbf24',
+            'accent_hi':  '#fcd34d',
+            'accent_ink': '#1a1004',
+            'good':       '#34d399',
+            'bad':        '#f87171',
+        }
+        self._theme = T
+        self._mono_font = ('Consolas', 9)
+        self._ui_font = ('Segoe UI', 10)
+        self._title_font = ('Segoe UI', 9, 'bold')
+
+        self.root.configure(bg=T['bg'])
+
+        style = ttk.Style()
+        # 'clam' is the most customizable built-in theme on Windows; the
+        # native 'vista' / 'xpnative' themes ignore many color overrides.
+        try: style.theme_use('clam')
+        except Exception: pass
+
+        # Frame styles — default is the page background, Card variant is
+        # used for the inner content of LabelFrame cards
+        style.configure('TFrame',       background=T['bg'])
+        style.configure('Card.TFrame',  background=T['bg_card'])
+
+        # Labels follow the surface they're on
+        style.configure('TLabel',       background=T['bg'],
+                                        foreground=T['text'], font=self._ui_font)
+        style.configure('Card.TLabel',  background=T['bg_card'],
+                                        foreground=T['text'], font=self._ui_font)
+        style.configure('Dim.TLabel',   background=T['bg_card'],
+                                        foreground=T['text_dim'], font=self._ui_font)
+        style.configure('Hint.TLabel',  background=T['bg_card'],
+                                        foreground=T['text_dim'],
+                                        font=('Segoe UI', 8, 'italic'))
+
+        # LabelFrame (the cards). The 'labelmargins' make the title chip
+        # sit slightly inset.
+        style.configure('TLabelframe', background=T['bg_card'],
+                        bordercolor=T['border_soft'], lightcolor=T['border_soft'],
+                        darkcolor=T['border_soft'], borderwidth=1, relief='solid')
+        style.configure('TLabelframe.Label', background=T['bg_card'],
+                        foreground=T['text_dim'], font=self._title_font,
+                        padding=(6, 0))
+
+        # Default chip-style button
+        style.configure('TButton',
+                        background=T['bg_tile'], foreground=T['text'],
+                        bordercolor=T['border'], lightcolor=T['border'],
+                        darkcolor=T['border'], focuscolor='none',
+                        padding=(10, 6), font=self._ui_font, relief='flat')
+        style.map('TButton',
+                  background=[('active', T['bg_hover']), ('pressed', T['bg_hover'])],
+                  bordercolor=[('focus', T['accent'])])
+
+        # Primary call-to-action button (Convert all)
+        style.configure('Accent.TButton',
+                        background=T['accent'], foreground=T['accent_ink'],
+                        bordercolor=T['accent'], lightcolor=T['accent'],
+                        darkcolor=T['accent'], focuscolor='none',
+                        padding=(14, 8), font=('Segoe UI', 10, 'bold'),
+                        relief='flat')
+        style.map('Accent.TButton',
+                  background=[('active', T['accent_hi']), ('pressed', T['accent_hi'])],
+                  foreground=[('active', T['accent_ink'])])
+
+        # Checkbutton / Radiobutton — sit on cards
+        for klass in ('TCheckbutton', 'TRadiobutton'):
+            style.configure(klass,
+                            background=T['bg_card'], foreground=T['text'],
+                            focuscolor='none', font=self._ui_font,
+                            indicatorbackground=T['bg_input'],
+                            indicatorforeground=T['accent'])
+            style.map(klass,
+                      background=[('active', T['bg_card'])],
+                      indicatorcolor=[('selected', T['accent']),
+                                      ('!selected', T['bg_input'])])
+
+        # Combobox (dropdowns)
+        style.configure('TCombobox',
+                        fieldbackground=T['bg_input'],
+                        background=T['bg_tile'],
+                        foreground=T['text'],
+                        bordercolor=T['border'],
+                        lightcolor=T['border'], darkcolor=T['border'],
+                        arrowcolor=T['text_mid'],
+                        selectbackground=T['bg_input'],
+                        selectforeground=T['text'],
+                        padding=(6, 4), font=self._ui_font)
+        style.map('TCombobox',
+                  fieldbackground=[('readonly', T['bg_input'])],
+                  bordercolor=[('focus', T['accent'])],
+                  arrowcolor=[('active', T['text'])])
+        # The Combobox's dropdown listbox is a tk Listbox under the hood;
+        # only option_add reaches it.
+        self.root.option_add('*TCombobox*Listbox.background', T['bg_tile'])
+        self.root.option_add('*TCombobox*Listbox.foreground', T['text'])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', T['accent'])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', T['accent_ink'])
+        self.root.option_add('*TCombobox*Listbox.borderWidth', '0')
+        self.root.option_add('*TCombobox*Listbox.font', self._ui_font)
+
+        # Entry
+        style.configure('TEntry',
+                        fieldbackground=T['bg_input'],
+                        foreground=T['text'],
+                        bordercolor=T['border'],
+                        lightcolor=T['border'], darkcolor=T['border'],
+                        insertcolor=T['accent'], font=self._ui_font)
+        style.map('TEntry', bordercolor=[('focus', T['accent'])])
+
+        # Scale (sliders)
+        style.configure('Horizontal.TScale',
+                        background=T['bg_card'],
+                        troughcolor=T['border'],
+                        bordercolor=T['border_soft'],
+                        sliderthickness=14)
+
+        # Progressbar
+        style.configure('Horizontal.TProgressbar',
+                        background=T['accent'],
+                        troughcolor=T['border'],
+                        bordercolor=T['border_soft'],
+                        lightcolor=T['accent'], darkcolor=T['accent'])
+
+        # Scrollbar
+        style.configure('Vertical.TScrollbar',
+                        background=T['bg_tile'],
+                        troughcolor=T['bg'],
+                        bordercolor=T['bg'],
+                        arrowcolor=T['text_dim'],
+                        gripcount=0, relief='flat')
+        style.map('Vertical.TScrollbar',
+                  background=[('active', T['bg_hover'])])
+
     # -- UI construction --
 
     def _build_ui(self):
-        pad = {"padx": 10, "pady": 6}
+        pad = {"padx": 12, "pady": 6}
+        T = self._theme
 
         # Header
         header = ttk.Frame(self.root)
-        header.pack(fill="x", **pad)
+        header.pack(fill="x", padx=12, pady=(12, 8))
         ttk.Label(
             header, text=APP_TITLE,
-            font=("Segoe UI", 14, "bold"),
+            font=("Segoe UI", 15, "bold"),
+            background=T['bg'], foreground=T['text'],
         ).pack(side="left")
         ttk.Label(
             header,
             text="Convert .txt / .md / .docx / .pdf / .epub  →  .mp3",
-            foreground="#666",
-        ).pack(side="left", padx=(10, 0))
+            background=T['bg'], foreground=T['text_dim'],
+            font=("Segoe UI", 9),
+        ).pack(side="left", padx=(12, 0))
 
         # Files list with drop target
         files_frame = ttk.LabelFrame(self.root, text="Files to convert")
         files_frame.pack(fill="both", expand=True, **pad)
 
-        list_wrap = ttk.Frame(files_frame)
-        list_wrap.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+        list_wrap = ttk.Frame(files_frame, style='Card.TFrame')
+        list_wrap.pack(fill="both", expand=True, padx=10, pady=(10, 0))
         scroll = ttk.Scrollbar(list_wrap, orient="vertical")
         scroll.pack(side="right", fill="y")
         self.file_list = tk.Listbox(
             list_wrap, yscrollcommand=scroll.set,
-            selectmode="extended", activestyle="dotbox",
+            selectmode="extended", activestyle="none",
+            bg=T['bg_tile'], fg=T['text'],
+            selectbackground=T['accent'], selectforeground=T['accent_ink'],
+            borderwidth=0, highlightthickness=0,
+            font=self._ui_font,
         )
         self.file_list.pack(side="left", fill="both", expand=True)
         scroll.config(command=self.file_list.yview)
@@ -251,8 +402,8 @@ class App:
             self.file_list.drop_target_register(DND_FILES)
             self.file_list.dnd_bind("<<Drop>>", self._on_drop)
 
-        btns = ttk.Frame(files_frame)
-        btns.pack(fill="x", padx=8, pady=8)
+        btns = ttk.Frame(files_frame, style='Card.TFrame')
+        btns.pack(fill="x", padx=10, pady=10)
         ttk.Button(btns, text="Add files…", command=self._pick_files).pack(side="left")
         ttk.Button(btns, text="Add folder…", command=self._pick_folder).pack(side="left", padx=(6, 0))
         ttk.Button(btns, text="Remove selected", command=self._remove_selected).pack(side="left", padx=(6, 0))
@@ -260,16 +411,17 @@ class App:
         if _HAS_DND:
             ttk.Label(
                 btns,
-                text=" tip: drag files / folders onto the list",
-                foreground="#888",
+                text="tip: drag files or folders onto the list",
+                background=T['bg_card'], foreground=T['text_dim'],
+                font=("Segoe UI", 8, "italic"),
             ).pack(side="right")
 
         # Settings
         settings = ttk.LabelFrame(self.root, text="Voice & pacing")
         settings.pack(fill="x", **pad)
 
-        row1 = ttk.Frame(settings); row1.pack(fill="x", padx=8, pady=4)
-        ttk.Label(row1, text="Voice:", width=10).pack(side="left")
+        row1 = ttk.Frame(settings, style='Card.TFrame'); row1.pack(fill="x", padx=10, pady=6)
+        ttk.Label(row1, text="Voice:", width=10, style='Card.TLabel').pack(side="left")
         self.voice_var = tk.StringVar(value="aria")
         voice_choices = list(tts_lib.US_VOICES.keys()) + ["(custom)"]
         self.voice_combo = ttk.Combobox(
@@ -286,30 +438,32 @@ class App:
         self.custom_voice_entry.insert(0, "")
         self.custom_voice_entry.configure(state="disabled")
 
-        row2 = ttk.Frame(settings); row2.pack(fill="x", padx=8, pady=4)
-        ttk.Label(row2, text="Rate:", width=10).pack(side="left")
+        row2 = ttk.Frame(settings, style='Card.TFrame'); row2.pack(fill="x", padx=10, pady=6)
+        ttk.Label(row2, text="Rate:", width=10, style='Card.TLabel').pack(side="left")
         self.rate_var = tk.IntVar(value=-5)
         self.rate_scale = ttk.Scale(
             row2, from_=-30, to=30, orient="horizontal",
             variable=self.rate_var, command=self._on_rate_changed,
         )
         self.rate_scale.pack(side="left", fill="x", expand=True)
-        self.rate_label = ttk.Label(row2, text="-5%", width=6, anchor="e")
-        self.rate_label.pack(side="left", padx=(6, 0))
+        self.rate_label = ttk.Label(row2, text="-5%", width=6, anchor="e",
+                                    style='Card.TLabel')
+        self.rate_label.pack(side="left", padx=(8, 0))
 
-        row3 = ttk.Frame(settings); row3.pack(fill="x", padx=8, pady=4)
-        ttk.Label(row3, text="Pitch:", width=10).pack(side="left")
+        row3 = ttk.Frame(settings, style='Card.TFrame'); row3.pack(fill="x", padx=10, pady=6)
+        ttk.Label(row3, text="Pitch:", width=10, style='Card.TLabel').pack(side="left")
         self.pitch_var = tk.IntVar(value=0)
         self.pitch_scale = ttk.Scale(
             row3, from_=-20, to=20, orient="horizontal",
             variable=self.pitch_var, command=self._on_pitch_changed,
         )
         self.pitch_scale.pack(side="left", fill="x", expand=True)
-        self.pitch_label = ttk.Label(row3, text="+0Hz", width=6, anchor="e")
-        self.pitch_label.pack(side="left", padx=(6, 0))
+        self.pitch_label = ttk.Label(row3, text="+0Hz", width=6, anchor="e",
+                                     style='Card.TLabel')
+        self.pitch_label.pack(side="left", padx=(8, 0))
 
-        row4 = ttk.Frame(settings); row4.pack(fill="x", padx=8, pady=4)
-        ttk.Label(row4, text="Output:", width=10).pack(side="left")
+        row4 = ttk.Frame(settings, style='Card.TFrame'); row4.pack(fill="x", padx=10, pady=6)
+        ttk.Label(row4, text="Output:", width=10, style='Card.TLabel').pack(side="left")
         self.output_var = tk.StringVar(value="(same folder as each source file)")
         ttk.Entry(row4, textvariable=self.output_var, state="readonly").pack(
             side="left", fill="x", expand=True,
@@ -317,7 +471,7 @@ class App:
         ttk.Button(row4, text="Pick…", command=self._pick_output).pack(side="left", padx=(6, 0))
         ttk.Button(row4, text="Reset", command=self._reset_output).pack(side="left", padx=(4, 0))
 
-        row5 = ttk.Frame(settings); row5.pack(fill="x", padx=8, pady=4)
+        row5 = ttk.Frame(settings, style='Card.TFrame'); row5.pack(fill="x", padx=10, pady=(6, 10))
         self.force_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             row5, text="Re-render even if .mp3 already exists",
@@ -328,8 +482,8 @@ class App:
         lang_frame = ttk.LabelFrame(self.root, text="Output language")
         lang_frame.pack(fill="x", **pad)
 
-        rowL1 = ttk.Frame(lang_frame); rowL1.pack(fill="x", padx=8, pady=4)
-        ttk.Label(rowL1, text="Output:", width=10).pack(side="left")
+        rowL1 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL1.pack(fill="x", padx=10, pady=6)
+        ttk.Label(rowL1, text="Output:", width=10, style='Card.TLabel').pack(side="left")
         self.lang_var = tk.StringVar(value="english")
         ttk.Radiobutton(
             rowL1, text="English only", variable=self.lang_var,
@@ -344,8 +498,8 @@ class App:
             value="both", command=self._on_lang_changed,
         ).pack(side="left")
 
-        rowL2 = ttk.Frame(lang_frame); rowL2.pack(fill="x", padx=8, pady=4)
-        ttk.Label(rowL2, text="Spanish voice:", width=14).pack(side="left")
+        rowL2 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL2.pack(fill="x", padx=10, pady=6)
+        ttk.Label(rowL2, text="Spanish voice:", width=14, style='Card.TLabel').pack(side="left")
         self.es_voice_var = tk.StringVar(value="dalia")
         self.es_voice_combo = ttk.Combobox(
             rowL2, textvariable=self.es_voice_var,
@@ -356,11 +510,11 @@ class App:
         self.es_voice_hint = ttk.Label(
             rowL2,
             text="  Latin American Spanish (Mexican by default)",
-            foreground="#888",
+            style='Dim.TLabel',
         )
         self.es_voice_hint.pack(side="left", padx=(8, 0))
 
-        rowL3 = ttk.Frame(lang_frame); rowL3.pack(fill="x", padx=8, pady=4)
+        rowL3 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL3.pack(fill="x", padx=10, pady=6)
         self.save_translated_text_var = tk.BooleanVar(value=True)
         self.save_translated_text_chk = ttk.Checkbutton(
             rowL3,
@@ -369,36 +523,44 @@ class App:
         )
         self.save_translated_text_chk.pack(side="left")
 
-        rowL4 = ttk.Frame(lang_frame); rowL4.pack(fill="x", padx=8, pady=(0, 4))
+        rowL4 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL4.pack(fill="x", padx=10, pady=(0, 10))
         self.lang_note = ttk.Label(
             rowL4,
             text="(Translation uses Google's free unofficial endpoint — needs internet at convert time.)",
-            foreground="#888", font=("Segoe UI", 8),
+            style='Hint.TLabel',
         )
         self.lang_note.pack(side="left")
 
         # Sync the visibility of the Spanish-only controls
         self._on_lang_changed()
 
-        # Action bar
+        # Action bar — primary CTA uses the amber accent style
         actions = ttk.Frame(self.root)
         actions.pack(fill="x", **pad)
         self.go_btn = ttk.Button(
             actions, text="Convert all", command=self._on_convert,
+            style='Accent.TButton',
         )
         self.go_btn.pack(side="left")
         self.cancel_btn = ttk.Button(
             actions, text="Cancel", command=self._on_cancel, state="disabled",
         )
-        self.cancel_btn.pack(side="left", padx=(6, 0))
+        self.cancel_btn.pack(side="left", padx=(8, 0))
         self.progress = ttk.Progressbar(actions, mode="determinate")
-        self.progress.pack(side="left", fill="x", expand=True, padx=(10, 0))
+        self.progress.pack(side="left", fill="x", expand=True, padx=(12, 0))
 
         # Log
         log_frame = ttk.LabelFrame(self.root, text="Log")
         log_frame.pack(fill="both", expand=True, **pad)
-        self.log = tk.Text(log_frame, height=8, state="disabled", wrap="none")
-        self.log.pack(fill="both", expand=True, padx=8, pady=8)
+        self.log = tk.Text(
+            log_frame, height=8, state="disabled", wrap="none",
+            bg=T['bg_tile'], fg=T['text_mid'],
+            insertbackground=T['accent'],
+            selectbackground=T['accent'], selectforeground=T['accent_ink'],
+            borderwidth=0, highlightthickness=0,
+            font=self._mono_font,
+        )
+        self.log.pack(fill="both", expand=True, padx=10, pady=10)
 
     # -- event handlers --
 
@@ -414,15 +576,16 @@ class App:
         output language. The widgets are kept in the layout regardless;
         we just toggle their enabled state so the layout doesn't reflow."""
         es_active = self.lang_var.get() in ("spanish", "both")
+        T = self._theme
         state = "readonly" if es_active else "disabled"
         self.es_voice_combo.configure(state=state)
         self.es_voice_hint.configure(
-            foreground=("#888" if es_active else "#444"),
+            foreground=(T['text_dim'] if es_active else T['border']),
         )
         chk_state = "normal" if es_active else "disabled"
         self.save_translated_text_chk.configure(state=chk_state)
         self.lang_note.configure(
-            foreground=("#888" if es_active else "#444"),
+            foreground=(T['text_dim'] if es_active else T['border']),
         )
 
     def _on_rate_changed(self, _evt=None):

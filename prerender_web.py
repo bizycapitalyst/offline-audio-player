@@ -52,60 +52,219 @@ PAGE_HTML = r"""<!DOCTYPE html>
 <title>TTS Converter</title>
 <style>
   :root {
-    --bg:#0a0a0d; --bg-card:#16161d; --bg-tile:#1c1c25; --bg-input:#1f1f29;
-    --bg-hover:#23232f; --border:#26262f; --border-soft:#1e1e26;
-    --text:#ededf0; --text-mid:#a8a8b3; --text-dim:#6a6a76;
-    --accent:#fbbf24; --accent-soft:rgba(251,191,36,0.13);
-    --good:#34d399; --bad:#f87171;
+    --bg:           #0a0a0d;
+    --bg-elevated:  #14141a;
+    --bg-card:      #16161d;
+    --bg-tile:      #1c1c25;
+    --bg-input:     #1f1f29;
+    --bg-hover:     #23232f;
+    --border:       #26262f;
+    --border-soft:  #1e1e26;
+    --text:         #ededf0;
+    --text-mid:     #a8a8b3;
+    --text-dim:     #6a6a76;
+    --accent:       #fbbf24;
+    --accent-hi:    #fcd34d;
+    --accent-soft:  rgba(251, 191, 36, 0.12);
+    --accent-glow:  rgba(251, 191, 36, 0.25);
+    --accent-ink:   #1a1004;
+    --good:         #34d399;
+    --good-soft:    rgba(52, 211, 153, 0.13);
+    --bad:          #f87171;
+    --radius:       14px;
+    --radius-sm:    10px;
+    --shadow-card:  0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.5);
+    --ease:         cubic-bezier(0.4, 0, 0.2, 1);
   }
-  * { box-sizing:border-box; }
-  body {
-    margin:0; padding:18px; max-width:560px; margin:0 auto;
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  *:focus { outline:none; }
+  *:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  html, body {
+    margin:0; padding:0;
     background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,sans-serif;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
     font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    min-height:100vh;
   }
-  h1 { font-size:18px; font-weight:600; margin:14px 0 18px; }
-  h1 .sub { color:var(--text-dim); font-size:12px; font-weight:400; display:block; margin-top:2px; }
-  .card { background:var(--bg-card); border:1px solid var(--border-soft); border-radius:14px; padding:16px; margin-bottom:14px; box-shadow:0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.5); }
-  label.lbl { display:block; font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; }
+  /* Subtle amber radial glow at the top, ported from spanish_app */
+  body::before {
+    content:""; position:fixed;
+    top:-200px; left:50%;
+    width:600px; height:400px;
+    background:radial-gradient(ellipse at center, rgba(251,191,36,0.06), transparent 65%);
+    transform:translateX(-50%);
+    pointer-events:none; z-index:0;
+  }
+  body { padding:18px; max-width:560px; margin:0 auto; position:relative; z-index:1; }
+  ::selection { background:var(--accent-soft); color:var(--text); }
+  h1 {
+    font-size:17px; font-weight:600;
+    letter-spacing:-0.01em;
+    margin:8px 0 20px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h1::before {
+    /* Tiny amber square as a logo accent — matches spanish_app's logo treatment */
+    content:""; display:inline-block;
+    width:32px; height:32px;
+    border-radius:8px;
+    background:var(--accent);
+    box-shadow:0 4px 14px -4px var(--accent-glow);
+    flex-shrink:0;
+  }
+  h1 .sub {
+    color:var(--text-dim);
+    font-size:11px; font-weight:400;
+    display:block; margin-top:1px;
+  }
+  h1 > div { display:flex; flex-direction:column; }
+  .card {
+    background:var(--bg-card);
+    border:1px solid var(--border-soft);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:12px;
+    box-shadow:var(--shadow-card);
+  }
+  label.lbl {
+    display:block;
+    font-size:11px; font-weight:600;
+    letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--text-dim);
+    margin-bottom:10px;
+  }
   .drop {
-    border:2px dashed var(--border); border-radius:10px; padding:28px 16px;
-    text-align:center; color:var(--text-dim); cursor:pointer; transition: all .15s;
+    border:2px dashed var(--border);
+    border-radius:var(--radius-sm);
+    padding:32px 16px;
+    text-align:center; color:var(--text-dim);
+    cursor:pointer;
+    transition:all 150ms var(--ease);
+    background:transparent;
   }
-  .drop.over { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
-  .drop b { color:var(--text); }
+  .drop:hover { border-color:var(--border); background:var(--bg-tile); }
+  .drop.over {
+    border-color:var(--accent);
+    background:var(--accent-soft);
+    color:var(--accent);
+  }
+  .drop b { color:var(--text); font-weight:600; }
   input[type=file] { display:none; }
-  .file-info { margin-top:10px; font-size:12px; color:var(--text-mid); min-height:18px; }
-  .row { display:grid; grid-template-columns: 90px 1fr 60px; gap:10px; align-items:center; margin-top:10px; }
-  .row label { font-size:12px; color:var(--text-dim); }
-  select, input[type=range], input[type=text], button {
-    font-family:inherit; font-size:14px; color:var(--text);
-    background:var(--bg-tile); border:1px solid var(--border);
-    border-radius:8px; padding:8px 12px; width:100%;
+  .file-info { margin-top:10px; font-size:12px; color:var(--text-mid); min-height:18px; font-variant-numeric:tabular-nums; }
+  .row {
+    display:grid;
+    grid-template-columns:110px 1fr 60px;
+    gap:10px; align-items:center;
+    margin-top:10px;
   }
-  input[type=range] { padding:0; height:6px; background:var(--border); accent-color:var(--accent); }
+  .row label { font-size:12px; color:var(--text-dim); font-weight:500; }
+  select, input[type=text], button {
+    font-family:inherit; font-size:14px; color:var(--text);
+    background:var(--bg-tile);
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    padding:9px 12px; width:100%;
+    transition:background 150ms var(--ease), border-color 150ms var(--ease);
+  }
+  select { background-color:var(--bg-input); }
+  select:hover, input[type=text]:hover { border-color:var(--border); background:var(--bg-hover); }
+  select:focus, input[type=text]:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); outline:none; }
+  select:disabled { opacity:0.4; cursor:not-allowed; }
+  input[type=range] {
+    -webkit-appearance:none; appearance:none;
+    width:100%; height:4px;
+    background:var(--border);
+    border-radius:2px;
+    outline:none; padding:0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none;
+    width:16px; height:16px;
+    background:var(--accent);
+    border-radius:50%;
+    cursor:pointer;
+    border:2px solid var(--bg);
+    transition:transform 150ms var(--ease), box-shadow 150ms var(--ease);
+  }
+  input[type=range]::-webkit-slider-thumb:hover {
+    transform:scale(1.1);
+    box-shadow:0 0 0 4px var(--accent-glow);
+  }
+  input[type=range]::-moz-range-thumb {
+    width:16px; height:16px; background:var(--accent);
+    border-radius:50%; cursor:pointer; border:2px solid var(--bg);
+  }
   .val { text-align:right; font-variant-numeric:tabular-nums; font-size:12px; color:var(--text-mid); }
   button.primary {
-    background:var(--accent); border-color:var(--accent); color:#1a1004;
+    background:var(--accent);
+    border-color:var(--accent);
+    color:var(--accent-ink);
     font-weight:700; cursor:pointer;
     padding:12px 16px; font-size:14px;
-    box-shadow:0 4px 14px -4px rgba(251,191,36,0.4);
+    box-shadow:0 4px 14px -4px var(--accent-glow);
+    transition:background 150ms var(--ease);
   }
-  button.primary:disabled { opacity:0.5; cursor:not-allowed; }
-  .progress { width:100%; height:6px; background:var(--border); border-radius:3px; margin-top:10px; overflow:hidden; }
-  .progress > div { height:100%; background:var(--accent); width:0%; transition: width .2s; }
-  .status { font-size:12px; margin-top:8px; min-height:18px; color:var(--text-dim); }
+  button.primary:hover:not(:disabled) {
+    background:var(--accent-hi);
+    border-color:var(--accent-hi);
+  }
+  button.primary:active:not(:disabled) { transform:scale(0.98); }
+  button.primary:disabled { opacity:0.5; cursor:not-allowed; box-shadow:none; }
+  .progress {
+    width:100%; height:6px;
+    background:var(--border);
+    border-radius:3px;
+    margin-top:10px; overflow:hidden;
+  }
+  .progress > div {
+    height:100%; background:var(--accent); width:0%;
+    transition:width 300ms var(--ease);
+  }
+  .status {
+    font-size:12px; margin-top:8px;
+    min-height:18px; color:var(--text-dim);
+    line-height:1.5;
+  }
   .status.warn { color:var(--bad); }
   .status.good { color:var(--good); }
-  details { margin-top:10px; }
-  details summary { cursor:pointer; color:var(--text-dim); font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; }
-  details .help { font-size:12.5px; color:var(--text-mid); margin-top:8px; line-height:1.6; }
-  details code { background:var(--bg); padding:1px 5px; border-radius:4px; font-family:"SF Mono",Monaco,Consolas,monospace; font-size:0.9em; }
+  details {
+    margin-top:12px;
+    border-top:1px solid var(--border-soft);
+    padding-top:10px;
+  }
+  details summary {
+    cursor:pointer; color:var(--text-dim);
+    font-size:11px; font-weight:600;
+    letter-spacing:0.08em; text-transform:uppercase;
+    list-style:none; user-select:none;
+    display:flex; align-items:center; gap:6px;
+  }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before {
+    content:"›"; font-size:14px; line-height:1;
+    color:var(--text-dim);
+    transition:transform 150ms var(--ease);
+  }
+  details[open] summary::before { transform:rotate(90deg); }
+  details .help {
+    font-size:12.5px; color:var(--text-mid);
+    margin-top:8px; line-height:1.6;
+  }
+  details code {
+    background:var(--bg);
+    padding:1px 6px; border-radius:4px;
+    font-family:"SF Mono", Monaco, Consolas, monospace;
+    font-size:0.9em;
+  }
 </style></head>
 <body>
-  <h1>TTS Converter
-    <span class="sub">.txt / .md / .docx / .pdf / .epub  →  .mp3</span>
+  <h1>
+    <div>
+      TTS Converter
+      <span class="sub">.txt / .md / .docx / .pdf / .epub  →  .mp3</span>
+    </div>
   </h1>
 
   <div class="card">
