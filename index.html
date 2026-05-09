@@ -329,6 +329,14 @@
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
   }
+  /* TTS voice & pacing panel hidden from view in both minimized and
+     maximized transcript states. Elements still exist in the DOM so
+     the JS handlers (voiceSelect, rateSlider, pitchSlider, pauseSlider)
+     bind correctly and the speech-synthesis engine keeps working with
+     whatever values are stored or defaulted. To re-expose the panel
+     later, remove this single rule. */
+  #ttsSettings { display: none; }
+
   /* Maximize / minimize button — the unicode glyphs ⤢ / ⤡ rendered too
      small in the icon chip. Explicit-sized SVG icons inside keep the
      button.icon outer shape exactly the same (padding/font-size on the
@@ -921,7 +929,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.6';
+const APP_VERSION = '1.8.7';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)

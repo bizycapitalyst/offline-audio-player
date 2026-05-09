@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the shell changes; clients pick it up on next load.
  */
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v21';
 const CACHE = `offline-audio-player-${CACHE_VERSION}`;
 
 const SHELL = [

@@ -1,5 +1,5 @@
 {
-  "version": "1.8.6",
+  "version": "1.8.7",
   "released": "2026-05-07",
-  "notes": "Skip buttons are now track-aware. Audio tracks (and audio+transcript pairs) keep the existing −15s / +15s time-jump behavior. Text-only tracks (the ones playing via TTS) switch to −¶ / +¶ paragraph navigation: forward jumps to the first sentence of the next <p>/<li>/<blockquote>; back jumps to the start of the current paragraph if mid-way through, otherwise to the previous paragraph. Button labels and tooltips update on each track load to match the active mode."
+  "notes": "TTS Voice & Pacing panel is now hidden from view in both the minimized and maximized transcript states (#ttsSettings { display: none }). The underlying speech-synthesis engine and all the controls (voice picker, rate, pitch, sentence-pause sliders) remain in the DOM and continue to function — text-only tracks still play via TTS using stored or default values. The panel can be re-exposed later by removing the single CSS rule."
 }
