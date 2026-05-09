@@ -1,5 +1,5 @@
 {
-  "version": "1.8.3",
+  "version": "1.8.4",
   "released": "2026-05-07",
-  "notes": "Speed selection chip (the 1.0× pill inside the Speed button) now uses the theme's blue palette — soft-blue background, blue text, blue-tinted border. The 'Speed' label part of the button is unchanged."
+  "notes": "TTS voice & pacing settings panel relocated from the bottom of the transcript card to under the main play shuttle in the player card (after the Speed row). Same controls, same wiring — just lives next to the playback controls now since that's where the Play button drives the TTS engine for text-only tracks. Transcript card no longer has the panel taking up space underneath when minimized."
 }

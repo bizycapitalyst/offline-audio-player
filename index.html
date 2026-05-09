@@ -856,21 +856,6 @@
       <div class="row" style="margin-top:8px">
         <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
       </div>
-    </div>
-
-    <div class="card transcript-card" id="transcriptCard">
-      <div class="transcript-header">
-        <span class="title" id="transcriptTitle">Transcript</span>
-        <div class="actions">
-          <button class="icon" id="followBtn" title="Auto-scroll with audio">Follow</button>
-          <button class="icon" id="maximizeBtn" title="Maximize transcript" aria-label="Maximize transcript">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="transcript" id="transcript">
-        <div class="empty">No transcript loaded.</div>
-      </div>
       <details id="ttsSettings">
         <summary>TTS voice & pacing</summary>
         <div class="voice-row">
@@ -896,6 +881,21 @@
           <b>For true background TTS (screen off):</b> on your PC, run <code>python prerender.py</code> in your audio folder. It uses Microsoft Edge's neural TTS (free, no API key, US English voices) to produce an MP3 alongside each transcript. The MP3 plays as a regular audio file with full lockscreen / background support.
         </div>
       </details>
+    </div>
+
+    <div class="card transcript-card" id="transcriptCard">
+      <div class="transcript-header">
+        <span class="title" id="transcriptTitle">Transcript</span>
+        <div class="actions">
+          <button class="icon" id="followBtn" title="Auto-scroll with audio">Follow</button>
+          <button class="icon" id="maximizeBtn" title="Maximize transcript" aria-label="Maximize transcript">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="transcript" id="transcript">
+        <div class="empty">No transcript loaded.</div>
+      </div>
       <div class="mini-controls">
         <button id="prevBtn2" title="Previous">⏮</button>
         <button id="back15Btn2" title="Back 15s">−15s</button>
@@ -908,7 +908,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.3';
+const APP_VERSION = '1.8.4';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
