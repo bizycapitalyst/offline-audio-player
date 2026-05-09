@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.2.0",
   "released": "2026-05-09",
-  "notes": "Section 1 number circle now uses the same accent fill as section 2 in all states (collapsed and expanded), for consistent visual weight."
+  "notes": "App icon: minimalist headphones glyph in accent on dark rounded square. Wired into manifest (any/192/512 sizes), favicon, apple-touch-icon, and Safari mask-icon. Service worker pre-caches the icon for offline."
 }

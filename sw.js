@@ -10,13 +10,14 @@
  *
  * Bump CACHE_VERSION whenever the shell changes; clients pick it up on next load.
  */
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE = `offline-audio-player-${CACHE_VERSION}`;
 
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './icons/headphones.svg',
 ];
 
 self.addEventListener('install', event => {
