@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "released": "2026-05-09",
-  "notes": "Visual refresh: refined dark palette, minimalist surfaces, deeper blacks, single calm accent, custom slider/scrollbar, sticky blurred header, sharper typography. Section 1 (folder picker) is now a collapsible card that auto-collapses once a folder is loaded, with a status chip in the header."
+  "notes": "Section 1 number circle now uses the same accent fill as section 2 in all states (collapsed and expanded), for consistent visual weight."
 }
