@@ -942,7 +942,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.9';
+const APP_VERSION = '1.9.0';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1346,11 +1346,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         currentObjectURL = URL.createObjectURL(blob);
         audioEl.src = currentObjectURL;
         audioEl.playbackRate = SPEEDS[speedIdx];
+        // Set Media Session BEFORE play(): Android Chrome decides whether to
+        // grant background-audio privileges at the moment play() fires, so
+        // metadata + handlers must already be registered. Doing it after was
+        // letting Chrome flag the page as "non-media" and pause it whenever
+        // the user backgrounded the app or turned off the screen.
+        updateMediaSession(t);
         if (autoplay){
           try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
         }
         updatePlayPauseLabel();
-        updateMediaSession(t);
       } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
     } else {
       audioEl.removeAttribute('src');
@@ -1901,13 +1906,17 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length); // Loop folder (wrap)
   });
 
-  const ART_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
   function updateMediaSession(t){
     if (!('mediaSession' in navigator)) return;
     try {
+      // No artwork passed: Android Chrome falls back to the manifest icon
+      // (the proper headphones SVG). The previous 1x1 transparent PNG was
+      // being treated as "no usable artwork" by some Chrome builds and
+      // contributed to the OS deprioritizing background-audio for us.
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: t.baseName, artist: 'Offline Audio Player', album: 'Local files',
-        artwork: [{ src: ART_URL, sizes: '96x96', type: 'image/png' }],
+        title: t.baseName,
+        artist: 'Offline Audio Player',
+        album: 'Local files',
       });
       navigator.mediaSession.setActionHandler('play', () => audioEl.play());
       navigator.mediaSession.setActionHandler('pause', () => audioEl.pause());
@@ -1921,6 +1930,35 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       });
     } catch(_) {}
   }
+
+  // --- Wake Lock ---
+  // Holding a screen wake lock while audio plays helps Android Chrome keep
+  // the page alive during foreground use (e.g. switching to another app and
+  // coming back). The OS auto-releases it when the page becomes hidden, so
+  // we re-acquire on visibility change while still playing. Doesn't directly
+  // help the "screen off via power button" case — that's purely on Media
+  // Session — but it makes the app-minimize case more reliable.
+  let _wakeLock = null;
+  async function acquireWakeLock(){
+    if (!('wakeLock' in navigator)) return;
+    if (document.hidden) return;
+    if (_wakeLock) return;
+    try {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    } catch(_) { _wakeLock = null; }
+  }
+  function releaseWakeLock(){
+    if (!_wakeLock) return;
+    try { _wakeLock.release(); } catch(_) {}
+    _wakeLock = null;
+  }
+  audioEl.addEventListener('play', acquireWakeLock);
+  audioEl.addEventListener('pause', releaseWakeLock);
+  audioEl.addEventListener('ended', releaseWakeLock);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !audioEl.paused) acquireWakeLock();
+  });
 
   // --- Text-to-Speech ---
   const synth = window.speechSynthesis;

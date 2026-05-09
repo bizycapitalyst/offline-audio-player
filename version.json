@@ -1,5 +1,5 @@
 {
-  "version": "1.8.9",
-  "released": "2026-05-07",
-  "notes": "Paragraph glyph (¶) on the skip-back / skip-forward buttons is now visually scaled to 1.7× via transform, so it reads clearly inside the chip while the button itself stays exactly the same size (transforms don't affect layout)."
+  "version": "1.9.0",
+  "released": "2026-05-09",
+  "notes": "Background audio fixes for app-minimize and screen-off. (1) Media Session metadata is now registered BEFORE audioEl.play() — Android Chrome decides whether to grant background-audio privileges at the moment play() fires, so registering after was letting it flag the page as 'non-media' and pause us on background. (2) Dropped the 1×1 transparent PNG artwork; with no artwork passed, Chrome falls back to the manifest icon (headphones SVG), which Android handles better. (3) Acquire a screen wake lock while audio plays and re-acquire on return-to-foreground; helps keep the page alive across app-switches."
 }
