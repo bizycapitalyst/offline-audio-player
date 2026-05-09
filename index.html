@@ -942,7 +942,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.9.1';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1909,14 +1909,20 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   function updateMediaSession(t){
     if (!('mediaSession' in navigator)) return;
     try {
-      // No artwork passed: Android Chrome falls back to the manifest icon
-      // (the proper headphones SVG). The previous 1x1 transparent PNG was
-      // being treated as "no usable artwork" by some Chrome builds and
-      // contributed to the OS deprioritizing background-audio for us.
+      // Pass real PNG artwork at multiple sizes. Android Chrome shows this
+      // on the lockscreen media notification, and — critically — treats
+      // pages that supply proper raster artwork as full-fledged media
+      // apps for backgrounding decisions. SVG-only manifests / 1×1
+      // placeholder PNGs were causing the OS to downgrade us and pause
+      // playback whenever the app was minimized or the screen turned off.
       navigator.mediaSession.metadata = new MediaMetadata({
         title: t.baseName,
         artist: 'Offline Audio Player',
         album: 'Local files',
+        artwork: [
+          { src: './icons/headphones-192.png', sizes: '192x192', type: 'image/png' },
+          { src: './icons/headphones-512.png', sizes: '512x512', type: 'image/png' },
+        ],
       });
       navigator.mediaSession.setActionHandler('play', () => audioEl.play());
       navigator.mediaSession.setActionHandler('pause', () => audioEl.pause());
