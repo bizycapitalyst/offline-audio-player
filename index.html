@@ -474,7 +474,9 @@
     border: 1px solid var(--border-soft);
   }
   .transcript .ts-tag:hover { background: var(--blue-soft); color: var(--blue); border-color: rgba(96,165,250,0.4); }
-  /* Speaking sentence — TTS active (amber accent) */
+  /* Speaking sentence — TTS active. Uses the theme's blue (same as the
+     audio-playback active block above) so all follow-along highlights
+     share one visual language; amber is reserved for action buttons. */
   .transcript .ts-sentence {
     padding: 1px 2px;
     border-radius: 3px;
@@ -482,8 +484,8 @@
     transition: background 200ms var(--ease);
   }
   .transcript .ts-sentence.speaking {
-    background: var(--accent-soft);
-    box-shadow: inset 2px 0 0 var(--accent);
+    background: var(--blue-soft);
+    box-shadow: inset 2px 0 0 var(--blue);
   }
 
   .empty {
@@ -756,7 +758,7 @@
       <div class="transcript-header">
         <span class="title" id="transcriptTitle">Transcript</span>
         <div class="actions">
-          <button class="icon toggled" id="followBtn" title="Auto-scroll with audio">Follow ✓</button>
+          <button class="icon" id="followBtn" title="Auto-scroll with audio">Follow</button>
           <button class="icon" id="maximizeBtn" title="Maximize transcript">⤢</button>
         </div>
       </div>
@@ -805,7 +807,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -864,7 +866,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
 
   let timedBlocks = [];
   let activeBlockEl = null;
-  let followEnabled = true;
+  // Follow defaults to OFF. Restored from session storage just below
+  // (after the persistence helpers are defined).
+  let followEnabled = false;
   let userScrollPaused = false;
   let suppressScrollDetect = false;
   let scrollResetTimer = null;
@@ -1422,10 +1426,21 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
     else { syncTranscriptToTime(); if (activeBlockEl) scrollElementIntoCenter(activeBlockEl); }
   });
-  followBtn.addEventListener('click', () => {
-    followEnabled = !followEnabled;
+  function applyFollowVisual(){
     followBtn.classList.toggle('toggled', followEnabled);
     followBtn.textContent = followEnabled ? 'Follow ✓' : 'Follow';
+  }
+  // Restore the saved follow preference (default OFF if nothing saved).
+  // Persistence helpers (loadSession/saveSession) are hoisted as function
+  // declarations, so calling them here is safe even though the SESSION_KEY
+  // const above is in the temporal dead zone elsewhere — we're past its
+  // initialization by this point.
+  if (loadSession().followEnabled === true) followEnabled = true;
+  applyFollowVisual();
+  followBtn.addEventListener('click', () => {
+    followEnabled = !followEnabled;
+    saveSession({ followEnabled });
+    applyFollowVisual();
     if (followEnabled){
       userScrollPaused = false;
       resumePill.classList.remove('show');

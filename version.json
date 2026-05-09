@@ -1,5 +1,5 @@
 {
-  "version": "1.5.2",
+  "version": "1.6.0",
   "released": "2026-05-09",
-  "notes": "TTS reliability fixes for the 'first 2 sentences play then silence' pattern on Android Chrome. (1) Pre-emptive synth.cancel() before each speak() if the engine is in speaking/pending state — clears stuck queue from a prior utterance. (2) Removed the periodic pause/resume watchdog: it was meant to defeat Chrome's 15-second utterance timeout, but on Android it corrupts engine state between sentences. Sentences are short enough that the timeout doesn't apply. (3) Audio-state indicator now also surfaces TTS progress (e.g. 'tts 3/12') so you can see where the engine wedges if it does. SW cache bumped to v6."
+  "notes": "(1) TTS speaking-sentence highlight now uses the theme's blue (matches the audio-progress active block); amber stays reserved for action buttons. All follow-along indicators share one visual language. (2) Follow toggle defaults to OFF on first launch; the user's choice is persisted to localStorage so once you turn it on, it stays on across sessions."
 }
