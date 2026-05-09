@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "released": "2026-05-09",
-  "notes": "Theme refresh ported from the Spanish Trainer app: warm amber accent on layered near-black surfaces, inset-highlight + drop-shadow card depth, subtle radial glow at top, 480px mobile-first column, uppercase 0.08em-tracked card titles, chip-pill secondary buttons, blue accent for transcript follow-along, amber for TTS speaking sentence. Headphones logo recolored to match (yellow-on-dark) and a small logo + subtitle added to the header."
+  "notes": "Folder restore no longer auto-plays the saved track. Auto-loaded tracks (silent restore on app open AND 'Resume previous folder' tap) now load to a stopped state — user explicitly taps Play to start. This also addresses the lingering 'audio stalls a few seconds in' bug: the prior auto-play attempt during folder restore was leaving the audio element in a fragile state on mobile Chrome, where the next user-gesture play would start but stall shortly after. Track-selection (dropdown / prev / next / track-end auto-advance) still auto-plays as before."
 }

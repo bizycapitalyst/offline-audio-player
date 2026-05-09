@@ -793,7 +793,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1059,13 +1059,17 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       setFolderStepStatus(`${audioCount} audio · ${trcount} text`, 'good');
       setFolderExpanded(false);
       setTrackStepStatus(`${tracks.length} track${tracks.length===1?'':'s'}`, 'good');
-      // Auto-select the previously played track if it's still present.
+      // Auto-select the previously played track if it's still present —
+      // but DON'T autoplay. Folder restoration shouldn't trigger sound;
+      // the user explicitly taps Play to start. (Also: autoplay attempts
+      // here race with audio loading on mobile Chrome and cause playback
+      // to stall a few seconds in, even on subsequent user-gesture plays.)
       const saved = loadSession();
       if (saved.trackBaseName){
         const i = tracks.findIndex(tr => tr.baseName === saved.trackBaseName);
         if (i >= 0){
           // Defer one frame so the dropdown is fully populated.
-          requestAnimationFrame(() => loadTrack(i));
+          requestAnimationFrame(() => loadTrack(i, { autoplay: false }));
         }
       }
     }
@@ -1078,7 +1082,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     throw new Error('No file reference');
   }
 
-  async function loadTrack(idx){
+  async function loadTrack(idx, opts = {}){
     if (idx < 0 || idx >= tracks.length) return;
     stopReading();
     currentIdx = idx;
@@ -1090,6 +1094,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     // Persist the chosen track baseName so we can re-select it next session.
     saveSession({ trackBaseName: t.baseName });
 
+    const autoplay = opts.autoplay !== false;
+
     if (currentObjectURL){ URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
     if (t.audioRef){
       try {
@@ -1097,7 +1103,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         currentObjectURL = URL.createObjectURL(blob);
         audioEl.src = currentObjectURL;
         audioEl.playbackRate = SPEEDS[speedIdx];
-        try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
+        if (autoplay){
+          try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
+        }
         updatePlayPauseLabel();
         updateMediaSession(t);
       } catch (err){ nowPlaying.textContent = 'Error loading audio'; }
@@ -1129,7 +1137,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     readBtn.disabled = !t.textRef;
     // Text-only tracks: auto-start TTS so pressing Play (or just selecting
     // the track) starts spoken playback, mirroring audio-file auto-play.
-    if (t.kind === 'text' && t.textRef && ttsAvailable){
+    if (t.kind === 'text' && t.textRef && ttsAvailable && autoplay){
       // Defer one frame so the rendered transcript is in the DOM.
       requestAnimationFrame(() => startReading(0));
     }
