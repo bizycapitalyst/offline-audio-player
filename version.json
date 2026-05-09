@@ -1,5 +1,5 @@
 {
-  "version": "1.8.2",
+  "version": "1.8.3",
   "released": "2026-05-07",
-  "notes": "Loop toggle moved to between -15s and Play in the shuttle row (Prev / -15s / Loop / Play / +15s / Next). Maximize / minimize button switched from unicode glyphs to explicit-sized SVG icons (18 px) so the arrows are clearly readable; the button chip itself stays the same size."
+  "notes": "Speed selection chip (the 1.0× pill inside the Speed button) now uses the theme's blue palette — soft-blue background, blue text, blue-tinted border. The 'Speed' label part of the button is unchanged."
 }
