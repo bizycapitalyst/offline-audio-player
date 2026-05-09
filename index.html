@@ -793,7 +793,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1424,7 +1424,10 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   });
   rescanBtn.addEventListener('click', () => { if (dirHandle) scanDir(); });
 
-  trackSelect.addEventListener('change', e => { const v = e.target.value; if (v === '') return; loadTrack(parseInt(v, 10)); });
+  // Selecting a track loads it but does NOT auto-play — the user explicitly
+  // taps Play to start. This applies to the dropdown and prev/next buttons.
+  // (End-of-track auto-advance still auto-plays so loop modes work.)
+  trackSelect.addEventListener('change', e => { const v = e.target.value; if (v === '') return; loadTrack(parseInt(v, 10), { autoplay: false }); });
 
   const playPause = () => {
     const t = tracks[currentIdx];
@@ -1442,8 +1445,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   audioEl.addEventListener('play', () => { stopReading(); updatePlayPauseLabel(); });
   audioEl.addEventListener('pause', updatePlayPauseLabel);
 
-  const goPrev = () => { if (!tracks.length) return; loadTrack(currentIdx <= 0 ? tracks.length - 1 : currentIdx - 1); };
-  const goNext = () => { if (!tracks.length) return; loadTrack((currentIdx + 1) % tracks.length); };
+  const goPrev = () => { if (!tracks.length) return; loadTrack(currentIdx <= 0 ? tracks.length - 1 : currentIdx - 1, { autoplay: false }); };
+  const goNext = () => { if (!tracks.length) return; loadTrack((currentIdx + 1) % tracks.length, { autoplay: false }); };
   const back15 = () => { audioEl.currentTime = Math.max(0, audioEl.currentTime - 15); };
   const fwd15 = () => { audioEl.currentTime = Math.min(audioEl.duration || 0, audioEl.currentTime + 15); };
   ['prevBtn','prevBtn2'].forEach(i => bindControl(i, goPrev));
