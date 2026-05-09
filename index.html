@@ -793,7 +793,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.5.0';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1337,13 +1337,31 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       const max = transcriptEl.scrollHeight - transcriptEl.clientHeight;
       if (max > 0) programmaticScrollTo(ratio * max);
     }
-    if ('mediaSession' in navigator && audioEl.duration){
-      try { navigator.mediaSession.setPositionState({ duration: audioEl.duration, playbackRate: audioEl.playbackRate || 1, position: audioEl.currentTime }); } catch(_) {}
-    }
   }
   audioEl.addEventListener('timeupdate', syncTranscriptToTime);
   audioEl.addEventListener('seeked', syncTranscriptToTime);
   audioEl.addEventListener('ratechange', syncTranscriptToTime);
+
+  // mediaSession.setPositionState should only be called on discrete state
+  // changes (play / pause / seek / ratechange / metadata). Calling it on
+  // every timeupdate (~4/s) can cause Chrome on Android to mark the audio
+  // as stalled and pause it after a few seconds.
+  function updateMediaSessionPosition(){
+    if (!('mediaSession' in navigator)) return;
+    if (!audioEl.duration || !Number.isFinite(audioEl.duration)) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: audioEl.duration,
+        playbackRate: audioEl.playbackRate || 1,
+        position: audioEl.currentTime,
+      });
+    } catch(_) {}
+  }
+  audioEl.addEventListener('play', updateMediaSessionPosition);
+  audioEl.addEventListener('pause', updateMediaSessionPosition);
+  audioEl.addEventListener('seeked', updateMediaSessionPosition);
+  audioEl.addEventListener('ratechange', updateMediaSessionPosition);
+  audioEl.addEventListener('loadedmetadata', updateMediaSessionPosition);
 
   transcriptEl.addEventListener('scroll', () => {
     if (suppressScrollDetect) return;
@@ -1523,8 +1541,11 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     voiceSelect.innerHTML = '';
     if (!ttsAvailable){ const opt = document.createElement('option'); opt.textContent = 'Speech synthesis not available'; opt.value = ''; voiceSelect.appendChild(opt); voiceSelect.disabled = true; return; }
     if (!voices.length){ const opt = document.createElement('option'); opt.textContent = '(no English voices found)'; opt.value = ''; voiceSelect.appendChild(opt); return; }
-    const firstUS = voices.find(v => v.lang.toLowerCase() === 'en-us');
-    chosenVoice = firstUS || voices[0];
+    // Strict: auto-pick must be en-US. If none is installed on the device,
+    // fall back to any en* voice and rely on u.lang = 'en-US' (set in
+    // speakUtterance) to coax US pronunciation from the engine.
+    const usVoices = voices.filter(v => v.lang.toLowerCase() === 'en-us');
+    chosenVoice = usVoices.sort((a,b) => rankVoice(b) - rankVoice(a))[0] || voices[0];
     voices.forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.name + '|' + v.lang;
@@ -1578,7 +1599,10 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       if (!text || !text.trim()){ resolve(); return; }
       const u = new SpeechSynthesisUtterance(text);
       if (chosenVoice) u.voice = chosenVoice;
-      u.lang = (chosenVoice && chosenVoice.lang) || 'en-US';
+      // ALWAYS hint US English regardless of the underlying voice's reported
+      // lang — keeps the auto-fallback voice (e.g. en-GB if no en-US is
+      // installed) speaking with US pronunciation when the engine supports it.
+      u.lang = 'en-US';
       u.rate = +rateSlider.value || 0.95;
       u.pitch = +pitchSlider.value || 1.0;
       u.volume = 1.0;

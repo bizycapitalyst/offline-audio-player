@@ -1,5 +1,5 @@
 {
-  "version": "1.4.2",
+  "version": "1.5.0",
   "released": "2026-05-09",
-  "notes": "Track selection (dropdown / prev / next) no longer auto-plays — the player loads the track to a stopped state and waits for an explicit tap of Play. End-of-track auto-advance still auto-plays so Loop One / Loop All keep working as expected."
+  "notes": "Two fixes. (1) TTS now always speaks with US English pronunciation: u.lang is forced to 'en-US' on every utterance regardless of the underlying voice's reported lang, and the auto-picked voice strictly prefers en-US (with rank-quality sort within US voices). (2) Audio stall fix: moved navigator.mediaSession.setPositionState out of the per-timeupdate hot path (called ~4×/sec, which makes Chrome on Android mark audio as stalled and pause it). Now called only on discrete state changes — play, pause, seek, ratechange, loadedmetadata. Service worker cache bumped to v4 to flush stale caches from earlier versions."
 }
