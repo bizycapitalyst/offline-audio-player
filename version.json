@@ -1,5 +1,5 @@
 {
-  "version": "1.3.1",
+  "version": "1.4.0",
   "released": "2026-05-09",
-  "notes": "Fix playback stalling a few seconds in: the v1.3.0 seek-on-loadedmetadata for position resume was racing with audio.play() and aborting it on mobile browsers. Drop the speculative position-resume scope (folder + track persistence — what was actually requested — still work). Tracks now always start from 0; folder and last-played track still restore."
+  "notes": "Theme refresh ported from the Spanish Trainer app: warm amber accent on layered near-black surfaces, inset-highlight + drop-shadow card depth, subtle radial glow at top, 480px mobile-first column, uppercase 0.08em-tracked card titles, chip-pill secondary buttons, blue accent for transcript follow-along, amber for TTS speaking sentence. Headphones logo recolored to match (yellow-on-dark) and a small logo + subtitle added to the header."
 }
