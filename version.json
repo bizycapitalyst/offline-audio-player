@@ -1,5 +1,5 @@
 {
-  "version": "1.8.4",
+  "version": "1.8.5",
   "released": "2026-05-07",
-  "notes": "TTS voice & pacing settings panel relocated from the bottom of the transcript card to under the main play shuttle in the player card (after the Speed row). Same controls, same wiring — just lives next to the playback controls now since that's where the Play button drives the TTS engine for text-only tracks. Transcript card no longer has the panel taking up space underneath when minimized."
+  "notes": "Track dropdown selector now uses the theme's blue palette — soft-blue background, blue text, blue-tinted border, and the chevron arrow recolored to match. Focus ring also blue. Other selects (TTS voice picker) are unchanged."
 }
