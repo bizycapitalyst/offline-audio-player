@@ -1,5 +1,5 @@
 {
-  "version": "1.7.7",
+  "version": "1.7.8",
   "released": "2026-05-07",
-  "notes": "Title bar (app header) is now sticky — stays pinned at the top while the rest of the page scrolls behind it. Maximized transcript still hides the header (more reading room). Maximizing/minimizing the transcript now auto-resumes Follow when the chip is on (no Resume pill required); when the chip is off, neither autoscroll nor the Resume pill show up — Follow truly disabled."
+  "notes": "Loop button is now an icon that cycles three states: ▶| Play once and stop, ↻¹ Loop the current track, ↻ Loop the entire folder. The icon itself communicates the mode — no more 'Loop: Off / One / All' text label. State 0 (Play once) used to advance through the folder until end; it now genuinely stops after the current track. States 1 and 2 unchanged."
 }

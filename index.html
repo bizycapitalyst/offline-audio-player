@@ -570,6 +570,28 @@
     font-family: "SF Mono", "Monaco", "Consolas", monospace;
   }
 
+  /* Loop-mode icon button — cycles through three states:
+       0 = play once and stop, 1 = loop current, 2 = loop folder.
+     Icon is swapped from JS each tap; this styling just centers and
+     sizes whatever SVG is inside. */
+  .loop-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 6px;
+  }
+  .loop-btn svg {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .loop-btn.active {
+    background: var(--accent-soft);
+    border-color: rgba(251,191,36,0.4);
+    color: var(--accent);
+  }
+
   .speed-pill {
     display: inline-block;
     padding: 1px 8px;
@@ -773,7 +795,7 @@
       </div>
       <div class="row" style="margin-top:8px">
         <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
-        <button id="loopBtn">Loop: Off</button>
+        <button id="loopBtn" class="loop-btn" aria-label="Loop mode" title="Loop mode"></button>
       </div>
     </div>
 
@@ -825,7 +847,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.7';
+const APP_VERSION = '1.7.8';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1621,15 +1643,45 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     audioEl.playbackRate = SPEEDS[speedIdx];
     speedLabel.textContent = SPEEDS[speedIdx].toFixed(2).replace(/\.?0+$/,'') + '×';
   });
+  // Loop mode cycles 0 → 1 → 2 → 0:
+  //   0 — Play once and stop. Track plays, audio stops at end. No advance.
+  //   1 — Loop current track. audioEl.loop=true; same file restarts forever.
+  //   2 — Loop folder. Advance to next track at end; wrap to first when done.
+  // Each state has a distinct SVG so the chip itself communicates the mode.
+  const LOOP_STATES = [
+    {
+      name: 'Play once',
+      title: 'Play this track and stop',
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 17 12 5 20" fill="currentColor"/><line x1="20" y1="4" x2="20" y2="20"/></svg>'
+    },
+    {
+      name: 'Loop one',
+      title: 'Loop the current track',
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="14" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="-apple-system, sans-serif">1</text></svg>'
+    },
+    {
+      name: 'Loop folder',
+      title: 'Loop the entire folder',
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>'
+    },
+  ];
+  function applyLoopState() {
+    const s = LOOP_STATES[loopMode];
+    loopBtn.innerHTML = s.svg;
+    loopBtn.setAttribute('aria-label', s.name);
+    loopBtn.title = s.title;
+    loopBtn.classList.toggle('active', loopMode !== 0);
+    audioEl.loop = (loopMode === 1);
+  }
+  applyLoopState();
   loopBtn.addEventListener('click', () => {
     loopMode = (loopMode + 1) % 3;
-    audioEl.loop = (loopMode === 1);
-    loopBtn.textContent = 'Loop: ' + (loopMode===0?'Off':loopMode===1?'One':'All');
+    applyLoopState();
   });
   audioEl.addEventListener('ended', () => {
-    if (loopMode === 1) return;
-    if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length);
-    else if (currentIdx + 1 < tracks.length) loadTrack(currentIdx + 1);
+    if (loopMode === 0) return;                                              // Play once and stop
+    if (loopMode === 1) return;                                              // Loop one (audioEl.loop handles it)
+    if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length); // Loop folder (wrap)
   });
 
   const ART_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
