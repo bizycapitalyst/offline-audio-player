@@ -59,13 +59,16 @@ class _Worker:
         self.thread: threading.Thread | None = None
         self.cancel_flag = threading.Event()
 
-    def start(self, files, voice, rate, pitch, output_dir, force):
+    def start(self, files, voice, rate, pitch, output_dir, force,
+              lang_mode="english", es_voice=tts_lib.DEFAULT_SPANISH_VOICE,
+              save_translated_text=True):
         if self.thread and self.thread.is_alive():
             return False
         self.cancel_flag.clear()
         self.thread = threading.Thread(
             target=self._run,
-            args=(files, voice, rate, pitch, output_dir, force),
+            args=(files, voice, rate, pitch, output_dir, force,
+                  lang_mode, es_voice, save_translated_text),
             daemon=True,
         )
         self.thread.start()
@@ -79,12 +82,16 @@ class _Worker:
 
     # -- internal --
 
-    def _run(self, files, voice, rate, pitch, output_dir, force):
+    def _run(self, files, voice, rate, pitch, output_dir, force,
+             lang_mode, es_voice, save_translated_text):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(
-                self._convert_all(files, voice, rate, pitch, output_dir, force)
+                self._convert_all(
+                    files, voice, rate, pitch, output_dir, force,
+                    lang_mode, es_voice, save_translated_text,
+                )
             )
         except Exception as e:
             self.q.put(("error", f"unexpected: {e}"))
@@ -92,8 +99,11 @@ class _Worker:
             loop.close()
             self.q.put(("done", None))
 
-    async def _convert_all(self, files, voice, rate, pitch, output_dir, force):
+    async def _convert_all(self, files, voice, rate, pitch, output_dir, force,
+                            lang_mode, es_voice, save_translated_text):
         total = len(files)
+        do_en = lang_mode in ("english", "both")
+        do_es = lang_mode in ("spanish", "both")
         for idx, src_path in enumerate(files, start=1):
             if self.cancel_flag.is_set():
                 self.q.put(("cancelled", None))
@@ -112,21 +122,68 @@ class _Worker:
                 continue
 
             dst_dir = output_dir if output_dir else src.parent
-            dst = dst_dir / (src.stem + ".mp3")
-            if dst.exists() and not force:
-                self.q.put(("skip", f"{src.name} → {dst.name} already exists"))
-                continue
 
-            self.q.put(("progress", {
-                "i": idx, "total": total, "src": src.name, "phase": "render",
-            }))
-            try:
-                await tts_lib.render_text_to_file(
-                    text, dst, voice=voice, rate=rate, pitch=pitch,
-                )
-                self.q.put(("ok", f"{src.name} → {dst.name}"))
-            except Exception as e:
-                self.q.put(("error", f"{src.name}: render failed — {e}"))
+            # ---- English render --------------------------------------
+            if do_en:
+                en_dst = dst_dir / (src.stem + ".mp3")
+                if en_dst.exists() and not force:
+                    self.q.put(("skip", f"{src.name} → {en_dst.name} already exists"))
+                else:
+                    self.q.put(("progress", {
+                        "i": idx, "total": total, "src": src.name, "phase": "render (en)",
+                    }))
+                    try:
+                        await tts_lib.render_text_to_file(
+                            text, en_dst, voice=voice, rate=rate, pitch=pitch,
+                        )
+                        self.q.put(("ok", f"{src.name} → {en_dst.name}"))
+                    except Exception as e:
+                        self.q.put(("error", f"{src.name}: render (en) failed — {e}"))
+
+            if self.cancel_flag.is_set():
+                self.q.put(("cancelled", None))
+                return
+
+            # ---- Spanish render --------------------------------------
+            if do_es:
+                es_audio_dst = dst_dir / (src.stem + ".es.mp3")
+                es_text_dst = dst_dir / (src.stem + ".es.txt")
+                already_have_audio = es_audio_dst.exists() and not force
+                if already_have_audio:
+                    self.q.put(("skip", f"{src.name} → {es_audio_dst.name} already exists"))
+                else:
+                    self.q.put(("progress", {
+                        "i": idx, "total": total, "src": src.name, "phase": "translate",
+                    }))
+                    try:
+                        translated = tts_lib.translate_text(text, target_lang="es")
+                    except tts_lib.MissingDependencyError as e:
+                        self.q.put(("error", f"{src.name}: {e}"))
+                        continue
+                    except Exception as e:
+                        self.q.put(("error", f"{src.name}: translation failed — {e}"))
+                        continue
+
+                    # Optionally write the translated text alongside the MP3
+                    # so the audio_player can pair them as a Spanish transcript.
+                    if save_translated_text:
+                        try:
+                            es_text_dst.write_text(translated, encoding="utf-8")
+                            self.q.put(("ok", f"{src.name} → {es_text_dst.name}"))
+                        except Exception as e:
+                            self.q.put(("error", f"{src.name}: write {es_text_dst.name} failed — {e}"))
+
+                    self.q.put(("progress", {
+                        "i": idx, "total": total, "src": src.name, "phase": "render (es)",
+                    }))
+                    try:
+                        await tts_lib.render_text_to_file(
+                            translated, es_audio_dst,
+                            voice=es_voice, rate=rate, pitch=pitch,
+                        )
+                        self.q.put(("ok", f"{src.name} → {es_audio_dst.name}"))
+                    except Exception as e:
+                        self.q.put(("error", f"{src.name}: render (es) failed — {e}"))
 
 
 # ============================================================================
@@ -267,6 +324,62 @@ class App:
             variable=self.force_var,
         ).pack(side="left")
 
+        # Output language (English / Spanish translation / Both)
+        lang_frame = ttk.LabelFrame(self.root, text="Output language")
+        lang_frame.pack(fill="x", **pad)
+
+        rowL1 = ttk.Frame(lang_frame); rowL1.pack(fill="x", padx=8, pady=4)
+        ttk.Label(rowL1, text="Output:", width=10).pack(side="left")
+        self.lang_var = tk.StringVar(value="english")
+        ttk.Radiobutton(
+            rowL1, text="English only", variable=self.lang_var,
+            value="english", command=self._on_lang_changed,
+        ).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(
+            rowL1, text="Spanish only (translated)", variable=self.lang_var,
+            value="spanish", command=self._on_lang_changed,
+        ).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(
+            rowL1, text="Both", variable=self.lang_var,
+            value="both", command=self._on_lang_changed,
+        ).pack(side="left")
+
+        rowL2 = ttk.Frame(lang_frame); rowL2.pack(fill="x", padx=8, pady=4)
+        ttk.Label(rowL2, text="Spanish voice:", width=14).pack(side="left")
+        self.es_voice_var = tk.StringVar(value="dalia")
+        self.es_voice_combo = ttk.Combobox(
+            rowL2, textvariable=self.es_voice_var,
+            values=list(tts_lib.LATAM_SPANISH_VOICES.keys()),
+            state="readonly", width=18,
+        )
+        self.es_voice_combo.pack(side="left")
+        self.es_voice_hint = ttk.Label(
+            rowL2,
+            text="  Latin American Spanish (Mexican by default)",
+            foreground="#888",
+        )
+        self.es_voice_hint.pack(side="left", padx=(8, 0))
+
+        rowL3 = ttk.Frame(lang_frame); rowL3.pack(fill="x", padx=8, pady=4)
+        self.save_translated_text_var = tk.BooleanVar(value=True)
+        self.save_translated_text_chk = ttk.Checkbutton(
+            rowL3,
+            text="Also save the translated text as .es.txt  (pairs with the .es.mp3 in the audio player)",
+            variable=self.save_translated_text_var,
+        )
+        self.save_translated_text_chk.pack(side="left")
+
+        rowL4 = ttk.Frame(lang_frame); rowL4.pack(fill="x", padx=8, pady=(0, 4))
+        self.lang_note = ttk.Label(
+            rowL4,
+            text="(Translation uses Google's free unofficial endpoint — needs internet at convert time.)",
+            foreground="#888", font=("Segoe UI", 8),
+        )
+        self.lang_note.pack(side="left")
+
+        # Sync the visibility of the Spanish-only controls
+        self._on_lang_changed()
+
         # Action bar
         actions = ttk.Frame(self.root)
         actions.pack(fill="x", **pad)
@@ -295,6 +408,22 @@ class App:
             self.custom_voice_entry.focus_set()
         else:
             self.custom_voice_entry.configure(state="disabled")
+
+    def _on_lang_changed(self, _evt=None):
+        """Show / hide the Spanish-specific controls based on the chosen
+        output language. The widgets are kept in the layout regardless;
+        we just toggle their enabled state so the layout doesn't reflow."""
+        es_active = self.lang_var.get() in ("spanish", "both")
+        state = "readonly" if es_active else "disabled"
+        self.es_voice_combo.configure(state=state)
+        self.es_voice_hint.configure(
+            foreground=("#888" if es_active else "#444"),
+        )
+        chk_state = "normal" if es_active else "disabled"
+        self.save_translated_text_chk.configure(state=chk_state)
+        self.lang_note.configure(
+            foreground=("#888" if es_active else "#444"),
+        )
 
     def _on_rate_changed(self, _evt=None):
         v = int(round(float(self.rate_scale.get())))
@@ -411,14 +540,28 @@ class App:
         pitch_hz = int(round(float(self.pitch_var.get())))
         pitch = f"{'+' if pitch_hz >= 0 else ''}{pitch_hz}Hz"
 
+        # Output language settings
+        lang_mode = self.lang_var.get()  # 'english' | 'spanish' | 'both'
+        es_voice = tts_lib.LATAM_SPANISH_VOICES.get(
+            self.es_voice_var.get(), tts_lib.DEFAULT_SPANISH_VOICE,
+        )
+        save_translated = self.save_translated_text_var.get()
+
         files = list(self.files)
         self.progress.configure(maximum=len(files), value=0)
-        self._log(f"--- starting {len(files)} file(s) — voice={voice} rate={rate} pitch={pitch}")
+        self._log(
+            f"--- starting {len(files)} file(s) — output={lang_mode} "
+            f"en_voice={voice} es_voice={es_voice if lang_mode != 'english' else '-'} "
+            f"rate={rate} pitch={pitch}"
+        )
         self.go_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self.worker.start(
             files, voice, rate, pitch,
             self.output_dir, self.force_var.get(),
+            lang_mode=lang_mode,
+            es_voice=es_voice,
+            save_translated_text=save_translated,
         )
 
     def _on_cancel(self):

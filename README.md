@@ -84,6 +84,28 @@ build_exe.bat
 
 Produces `dist\TTS_Converter.exe` (~30–50 MB). Copy it anywhere; it runs standalone.
 
+### English → Latin American Spanish translation
+
+Each entry point can output **English only** (default), **Spanish only** (translated), or **Both**. Spanish output uses Microsoft Edge's Latin American neural voices (Mexican by default — the most "neutral" LatAm dialect). Translation runs through `deep-translator`'s Google backend (free, no API key, needs internet at convert time only).
+
+| Output mode | Files produced (per source `chapter1.md`) |
+|---|---|
+| English only | `chapter1.mp3` |
+| Spanish only | `chapter1.es.mp3` + `chapter1.es.txt` (the translated text, optional) |
+| Both | `chapter1.mp3` + `chapter1.es.mp3` + `chapter1.es.txt` |
+
+The `.es.txt` is saved by default so the audio player can pair the Spanish MP3 with a Spanish transcript (matching the same `name + .es` pattern). Skip it with the GUI's checkbox or the CLI's `--no-translated-text`.
+
+CLI usage:
+
+```bash
+python prerender.py "..." --lang both                          # English + Spanish
+python prerender.py "..." --lang spanish                       # Spanish only
+python prerender.py "..." --lang spanish --spanish-voice jorge # different LatAm voice
+```
+
+LatAm Spanish voice presets: `dalia` (default, Mexico female), `jorge` (Mexico male), `paloma` / `alonso` (US Spanish), `salome` / `gonzalo` (Colombia), `camila` / `alex` (Peru), `elena` / `tomas` (Argentina). Or supply any full Edge voice name like `es-MX-DaliaNeural` directly.
+
 ### Supported input formats
 
 All four entry points accept:

@@ -134,11 +134,19 @@ async def render_one(
     return True
 
 
-async def main_async(folder: Path, voice: str, rate: str, pitch: str, force: bool) -> int:
+async def main_async(
+    folder: Path, voice: str, rate: str, pitch: str, force: bool,
+    lang_mode: str = "english",
+    es_voice: str = "es-MX-DaliaNeural",
+    save_translated_text: bool = True,
+) -> int:
     files = [f for f in folder.iterdir() if f.is_file()]
     by_base: dict[str, list[Path]] = {}
     for f in files:
         by_base.setdefault(f.stem, []).append(f)
+
+    do_en = lang_mode in ("english", "both")
+    do_es = lang_mode in ("spanish", "both")
 
     targets: list[Path] = []
     for base, group in by_base.items():
@@ -160,7 +168,8 @@ async def main_async(folder: Path, voice: str, rate: str, pitch: str, force: boo
         print("(No transcripts found without a matching audio file. Use --force to re-render.)")
         return 0
 
-    print(f"Voice:  {voice}")
+    print(f"Output: {lang_mode}")
+    print(f"En voice: {voice}    Es voice: {es_voice if do_es else '-'}")
     print(f"Rate:   {rate}    Pitch: {pitch}")
     print(f"Folder: {folder}")
     print(f"Targets ({len(targets)}):")
@@ -168,20 +177,79 @@ async def main_async(folder: Path, voice: str, rate: str, pitch: str, force: boo
         print(f"  {src.name}")
     print()
 
-    rendered = 0
-    for src in targets:
-        dst = folder / (src.stem + ".mp3")
-        print(f"-> {src.name}  =>  {dst.name}")
+    # Lazy-import the translation helper only when Spanish output is requested.
+    # Keeps the CLI usable without deep-translator installed for English-only use.
+    translate = None
+    if do_es:
         try:
-            ok = await render_one(src, dst, voice, rate, pitch)
-            if ok:
-                rendered += 1
-        except Exception as e:
-            print(f"   FAILED: {e}", file=sys.stderr)
+            from tts_lib import translate_text as _translate
+            translate = _translate
+        except ImportError:
+            print("ERROR: deep-translator (or tts_lib) not available — Spanish output requires it.",
+                  file=sys.stderr)
+            print("       pip install deep-translator", file=sys.stderr)
+            return 1
+
+    rendered = 0
+    failed = 0
+    total_outputs = len(targets) * (int(do_en) + int(do_es))
+    for src in targets:
+        # ---- English ---------------------------------------------------
+        if do_en:
+            en_dst = folder / (src.stem + ".mp3")
+            print(f"-> [en] {src.name}  =>  {en_dst.name}")
+            try:
+                ok = await render_one(src, en_dst, voice, rate, pitch)
+                if ok:
+                    rendered += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                print(f"   FAILED: {e}", file=sys.stderr)
+                failed += 1
+
+        # ---- Spanish ---------------------------------------------------
+        if do_es:
+            es_audio_dst = folder / (src.stem + ".es.mp3")
+            es_text_dst = folder / (src.stem + ".es.txt")
+            print(f"-> [es] {src.name}  =>  {es_audio_dst.name}")
+            try:
+                # extract text (re-using strip_markdown via render_one isn't
+                # possible since translate needs the cleaned source first)
+                try:
+                    raw = src.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    raw = src.read_text(encoding="utf-8", errors="replace")
+                cleaned = strip_markdown(raw).strip()
+                if not cleaned:
+                    print("   skipped (empty after cleanup)")
+                    continue
+                print("   translating...")
+                translated = translate(cleaned, target_lang="es")
+                if save_translated_text:
+                    es_text_dst.write_text(translated, encoding="utf-8")
+                    print(f"   wrote {es_text_dst.name}")
+                # render translated text
+                import edge_tts as _edge
+                tmp = es_audio_dst.with_suffix(es_audio_dst.suffix + ".part")
+                try:
+                    await _edge.Communicate(
+                        translated, voice=es_voice, rate=rate, pitch=pitch,
+                    ).save(str(tmp))
+                    tmp.replace(es_audio_dst)
+                    rendered += 1
+                except Exception:
+                    if tmp.exists():
+                        try: tmp.unlink()
+                        except OSError: pass
+                    raise
+            except Exception as e:
+                print(f"   FAILED: {e}", file=sys.stderr)
+                failed += 1
 
     print()
-    print(f"Done. {rendered}/{len(targets)} rendered.")
-    return 0 if rendered == len(targets) else 2
+    print(f"Done. {rendered}/{total_outputs} rendered.")
+    return 0 if failed == 0 else 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -208,6 +276,24 @@ def parse_args() -> argparse.Namespace:
         help="Re-render even if a matching audio file already exists.",
     )
     p.add_argument(
+        "--lang", "-l", default="english", choices=["english", "spanish", "both"],
+        help="Output language: 'english' (default), 'spanish' (translated to "
+             "Latin American Spanish), or 'both'. Spanish requires "
+             "deep-translator (pip install deep-translator).",
+    )
+    p.add_argument(
+        "--spanish-voice", default="es-MX-DaliaNeural",
+        help="Spanish voice (full Edge name or short alias: dalia, jorge, "
+             "paloma, alonso, salome, gonzalo, camila, alex, elena, tomas). "
+             "Default: es-MX-DaliaNeural.",
+    )
+    p.add_argument(
+        "--no-translated-text", action="store_true",
+        help="Skip writing the translated text as <name>.es.txt alongside the "
+             "Spanish .mp3. By default the .es.txt is saved so the audio "
+             "player can pair it as a Spanish transcript.",
+    )
+    p.add_argument(
         "--list-voices", action="store_true",
         help="List recommended US English voices and exit.",
     )
@@ -225,12 +311,28 @@ def main() -> int:
         return 0
 
     voice = US_VOICES.get(args.voice.lower(), args.voice)
+
+    # Resolve Spanish voice alias if the user passed a short name.
+    SPANISH_ALIASES = {
+        "dalia":   "es-MX-DaliaNeural", "jorge":   "es-MX-JorgeNeural",
+        "paloma":  "es-US-PalomaNeural", "alonso":  "es-US-AlonsoNeural",
+        "salome":  "es-CO-SalomeNeural", "gonzalo": "es-CO-GonzaloNeural",
+        "camila":  "es-PE-CamilaNeural", "alex":    "es-PE-AlexNeural",
+        "elena":   "es-AR-ElenaNeural",  "tomas":   "es-AR-TomasNeural",
+    }
+    es_voice = SPANISH_ALIASES.get(args.spanish_voice.lower(), args.spanish_voice)
+
     folder = Path(args.folder).expanduser().resolve()
     if not folder.is_dir():
         print(f"Not a directory: {folder}", file=sys.stderr)
         return 1
     try:
-        return asyncio.run(main_async(folder, voice, args.rate, args.pitch, args.force))
+        return asyncio.run(main_async(
+            folder, voice, args.rate, args.pitch, args.force,
+            lang_mode=args.lang,
+            es_voice=es_voice,
+            save_translated_text=not args.no_translated_text,
+        ))
     except KeyboardInterrupt:
         print("\nInterrupted.")
         return 130

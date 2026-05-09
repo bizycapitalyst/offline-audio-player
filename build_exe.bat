@@ -79,10 +79,15 @@ REM --collect-submodules: pull in everything from packages with dynamic imports
     --hidden-import pypdf ^
     --hidden-import ebooklib ^
     --hidden-import bs4 ^
+    --hidden-import deep_translator ^
+    --hidden-import deep_translator.google ^
+    --hidden-import deep_translator.constants ^
+    --hidden-import deep_translator.exceptions ^
     --collect-submodules edge_tts ^
     --collect-submodules docx ^
     --collect-submodules pypdf ^
     --collect-submodules ebooklib ^
+    --collect-submodules deep_translator ^
     --collect-data certifi ^
     prerender_gui.py
 

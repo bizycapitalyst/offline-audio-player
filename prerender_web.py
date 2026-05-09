@@ -119,9 +119,30 @@ PAGE_HTML = r"""<!DOCTYPE html>
   </div>
 
   <div class="card">
+    <label class="lbl">Output language</label>
+    <div class="row">
+      <label>Output</label>
+      <select id="lang">
+        <option value="english">English only</option>
+        <option value="spanish">Spanish only (translated)</option>
+        <option value="both">Both</option>
+      </select>
+      <span></span>
+    </div>
+    <div class="row" id="esVoiceRow">
+      <label>Spanish voice</label>
+      <select id="esVoice"></select>
+      <span></span>
+    </div>
+    <div style="margin-top:6px; font-size:11.5px; color:var(--text-dim);">
+      Spanish output goes to <code>&lt;name&gt;.es.mp3</code>. Translation uses Google's free unofficial endpoint.
+    </div>
+  </div>
+
+  <div class="card">
     <label class="lbl">Voice & pacing</label>
     <div class="row">
-      <label>Voice</label>
+      <label>English voice</label>
       <select id="voice"></select>
       <span></span>
     </div>
@@ -152,6 +173,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
 
 <script>
 const VOICES = __VOICES_JSON__;
+const ES_VOICES = __ES_VOICES_JSON__;
 const voiceSel = document.getElementById('voice');
 for (const [alias, full] of Object.entries(VOICES)){
   const o = document.createElement('option');
@@ -160,6 +182,26 @@ for (const [alias, full] of Object.entries(VOICES)){
   voiceSel.appendChild(o);
 }
 voiceSel.value = "en-US-AriaNeural";
+
+const esVoiceSel = document.getElementById('esVoice');
+for (const [alias, full] of Object.entries(ES_VOICES)){
+  const o = document.createElement('option');
+  o.value = full;
+  o.textContent = `${alias}  —  ${full}`;
+  esVoiceSel.appendChild(o);
+}
+esVoiceSel.value = "es-MX-DaliaNeural";
+
+const langSel = document.getElementById('lang');
+const esVoiceRow = document.getElementById('esVoiceRow');
+function syncLangVisibility(){
+  const m = langSel.value;
+  const showEs = (m === 'spanish' || m === 'both');
+  esVoiceRow.style.opacity = showEs ? '1' : '0.4';
+  esVoiceSel.disabled = !showEs;
+}
+langSel.addEventListener('change', syncLangVisibility);
+syncLangVisibility();
 
 const rate = document.getElementById('rate');
 const rateVal = document.getElementById('rateVal');
@@ -207,14 +249,18 @@ goBtn.addEventListener('click', async () => {
   const voice = customVoice.value.trim() || voiceSel.value;
   const r = +rate.value;
   const p = +pitch.value;
+  const lang = langSel.value;
+  const esVoice = esVoiceSel.value;
   const fd = new FormData();
   fd.append('file', chosenFile);
   fd.append('voice', voice);
   fd.append('rate', fmtRate(r));
   fd.append('pitch', fmtPitch(p));
+  fd.append('lang', lang);
+  fd.append('es_voice', esVoice);
   goBtn.disabled = true;
   prog.style.width = '20%';
-  setStatus('extracting + rendering…');
+  setStatus(lang === 'english' ? 'extracting + rendering…' : 'extracting + translating + rendering…');
   try {
     const resp = await fetch('/api/render', { method:'POST', body: fd });
     if (!resp.ok){
@@ -223,14 +269,17 @@ goBtn.addEventListener('click', async () => {
     }
     prog.style.width = '90%';
     const blob = await resp.blob();
-    const baseName = chosenFile.name.replace(/\.[^.]+$/, '') + '.mp3';
+    const cd = resp.headers.get('Content-Disposition') || '';
+    let outName = chosenFile.name.replace(/\.[^.]+$/, '') + '.mp3';
+    const m = cd.match(/filename="([^"]+)"/);
+    if (m) outName = m[1];
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = baseName;
+    a.href = url; a.download = outName;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     prog.style.width = '100%';
-    setStatus(`done — ${baseName} downloaded.`, 'good');
+    setStatus(`done — ${outName} downloaded.`, 'good');
   } catch(err){
     setStatus('failed: ' + err.message, 'warn');
     prog.style.width = '0%';
@@ -245,10 +294,14 @@ goBtn.addEventListener('click', async () => {
 
 
 def _build_html() -> bytes:
-    """Inject the voice list into the page template at startup so the JS
-    dropdown matches the lib's known voices."""
-    voices_json = json.dumps(tts_lib.US_VOICES)
-    return PAGE_HTML.replace("__VOICES_JSON__", voices_json).encode("utf-8")
+    """Inject voice catalogs into the page template at startup so the JS
+    dropdowns match the lib's known voices."""
+    en_voices_json = json.dumps(tts_lib.US_VOICES)
+    es_voices_json = json.dumps(tts_lib.LATAM_SPANISH_VOICES)
+    return (PAGE_HTML
+            .replace("__VOICES_JSON__", en_voices_json)
+            .replace("__ES_VOICES_JSON__", es_voices_json)
+            ).encode("utf-8")
 
 
 _HTML_CACHE: bytes | None = None
@@ -353,6 +406,10 @@ class _Handler(BaseHTTPRequestHandler):
         voice = (fields.get("voice") or tts_lib.DEFAULT_VOICE).strip() or tts_lib.DEFAULT_VOICE
         rate = (fields.get("rate") or tts_lib.DEFAULT_RATE).strip() or tts_lib.DEFAULT_RATE
         pitch = (fields.get("pitch") or tts_lib.DEFAULT_PITCH).strip() or tts_lib.DEFAULT_PITCH
+        lang = (fields.get("lang") or "english").strip().lower()
+        es_voice = (fields.get("es_voice") or tts_lib.DEFAULT_SPANISH_VOICE).strip() or tts_lib.DEFAULT_SPANISH_VOICE
+        if lang not in ("english", "spanish", "both"):
+            lang = "english"
 
         # Need to figure out the source ext to pick the right extractor.
         # Browsers don't tell us inline; but the form gave us a filename via
@@ -383,27 +440,81 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_text(HTTPStatus.BAD_REQUEST, f"extract failed: {e}")
             return
 
-        # Render synchronously on this request thread (a fresh asyncio loop).
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Translate first if Spanish output is requested. For Spanish-only the
+        # translated text feeds the single render. For "both" we render English
+        # from `text` and Spanish from `text_es`, then return them as a small
+        # zip so the browser can download both at once.
+        text_es = None
+        if lang in ("spanish", "both"):
             try:
-                mp3 = loop.run_until_complete(
-                    tts_lib.render_text_to_bytes(
-                        text, voice=voice, rate=rate, pitch=pitch,
+                text_es = tts_lib.translate_text(text, target_lang="es")
+            except tts_lib.MissingDependencyError as e:
+                self._send_text(HTTPStatus.BAD_REQUEST, str(e))
+                return
+            except Exception as e:
+                self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, f"translation failed: {e}")
+                return
+
+        # Render synchronously on this request thread (a fresh asyncio loop).
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            try:
+                en_mp3 = None
+                es_mp3 = None
+                if lang in ("english", "both"):
+                    en_mp3 = loop.run_until_complete(
+                        tts_lib.render_text_to_bytes(
+                            text, voice=voice, rate=rate, pitch=pitch,
+                        )
                     )
-                )
+                if lang in ("spanish", "both"):
+                    es_mp3 = loop.run_until_complete(
+                        tts_lib.render_text_to_bytes(
+                            text_es, voice=es_voice, rate=rate, pitch=pitch,
+                        )
+                    )
             finally:
                 loop.close()
         except Exception as e:
             self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, f"render failed: {e}")
             return
 
-        out_name = (Path(filename).stem if filename else "output") + ".mp3"
+        stem = Path(filename).stem if filename else "output"
+
+        # Single output: just stream the mp3 back.
+        if lang == "english":
+            out_name = f"{stem}.mp3"
+            self._send_audio(en_mp3, out_name)
+            return
+        if lang == "spanish":
+            out_name = f"{stem}.es.mp3"
+            self._send_audio(es_mp3, out_name)
+            return
+
+        # Both: stream a zip containing the English mp3, the Spanish mp3, and
+        # the translated text file. The browser saves the zip; user extracts.
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{stem}.mp3", en_mp3)
+            zf.writestr(f"{stem}.es.mp3", es_mp3)
+            zf.writestr(f"{stem}.es.txt", text_es)
+        zip_bytes = buf.getvalue()
+        out_name = f"{stem}.audio_player.zip"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Length", str(len(zip_bytes)))
+        self.send_header("Content-Disposition", f'attachment; filename="{out_name}"')
+        self.end_headers()
+        self.wfile.write(zip_bytes)
+
+    def _send_audio(self, mp3: bytes, filename: str):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "audio/mpeg")
         self.send_header("Content-Length", str(len(mp3)))
-        self.send_header("Content-Disposition", f'attachment; filename="{out_name}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
         self.wfile.write(mp3)
 

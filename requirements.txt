@@ -7,6 +7,9 @@ pypdf>=4.0.0          # .pdf
 ebooklib>=0.18        # .epub
 beautifulsoup4>=4.12  # .epub HTML cleanup
 
+# English -> Latin American Spanish translation (used when --lang is spanish or both)
+deep-translator>=1.11.0
+
 # Drag-and-drop in the Tkinter GUI (optional — file picker works without it)
 tkinterdnd2>=0.3.0; sys_platform != "darwin"
 

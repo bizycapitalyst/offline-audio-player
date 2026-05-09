@@ -44,11 +44,35 @@ DEFAULT_RATE = "-5%"
 DEFAULT_PITCH = "+0Hz"
 
 
+# ---- Latin American Spanish voices ----------------------------------------
+# These are Edge TTS neural voices native to Latin American countries (NOT
+# es-ES, which is European Spanish). 'dalia' (Mexican female) is the default
+# because Mexican Spanish is the most widely-understood LatAm dialect and
+# is what international media typically uses for "neutral Latin American".
+
+LATAM_SPANISH_VOICES = {
+    "dalia":   "es-MX-DaliaNeural",      # Mexico female (default)
+    "jorge":   "es-MX-JorgeNeural",      # Mexico male
+    "paloma":  "es-US-PalomaNeural",     # US Spanish female
+    "alonso":  "es-US-AlonsoNeural",     # US Spanish male
+    "salome":  "es-CO-SalomeNeural",     # Colombia female
+    "gonzalo": "es-CO-GonzaloNeural",    # Colombia male
+    "camila":  "es-PE-CamilaNeural",     # Peru female
+    "alex":    "es-PE-AlexNeural",       # Peru male
+    "elena":   "es-AR-ElenaNeural",      # Argentina female
+    "tomas":   "es-AR-TomasNeural",      # Argentina male
+}
+
+DEFAULT_SPANISH_VOICE = "es-MX-DaliaNeural"
+
+
 def resolve_voice(name_or_alias: str) -> str:
     """Translate a friendly alias ('aria') to a full voice name. Pass-through
     for any string that isn't a known alias (lets users supply
-    'en-GB-RyanNeural' etc. directly)."""
-    return US_VOICES.get((name_or_alias or "").lower(), name_or_alias)
+    'en-GB-RyanNeural' etc. directly). Looks in both the English and Spanish
+    catalogs."""
+    key = (name_or_alias or "").lower()
+    return US_VOICES.get(key) or LATAM_SPANISH_VOICES.get(key) or name_or_alias
 
 
 # ============================================================================
@@ -269,3 +293,103 @@ def discover_unrendered(folder: Path, force: bool = False) -> list[Path]:
 async def list_all_voices() -> list[dict]:
     """Return the full Edge TTS voice catalog as a list of dicts."""
     return await edge_tts.list_voices()
+
+
+# ============================================================================
+# Translation — English → Latin American Spanish (or any pair)
+# ============================================================================
+# Uses deep-translator's GoogleTranslator backend, which hits Google's free
+# unofficial web endpoint. No API key, but rate-limited and brittle in the
+# same way edge-tts is brittle (Google can change the protocol). For the
+# typical use case — convert a chapter / article / .txt for personal study —
+# this is fine. Long inputs are chunked at paragraph boundaries to stay
+# under Google's per-request character limit.
+
+# Google's per-request limit is ~5000 chars. We aim for under 4500 to leave
+# room for the URL-encoded form, headers, etc.
+_TRANSLATE_CHUNK_LIMIT = 4500
+
+
+def translate_text(
+    text: str,
+    target_lang: str = "es",
+    source_lang: str = "auto",
+    progress: Optional[callable] = None,
+) -> str:
+    """Translate `text` to `target_lang` (ISO 639-1, e.g. 'es' for Spanish).
+    Chunks long inputs on paragraph boundaries; falls back to sentence
+    splitting for very long single paragraphs.
+
+    `progress`, if given, is called as `progress(done_chunks, total_chunks)`
+    after each chunk completes — lets the GUI show a per-chunk indicator
+    while a long file is translating.
+    """
+    try:
+        from deep_translator import GoogleTranslator
+    except ImportError as e:
+        raise MissingDependencyError(
+            "deep-translator not installed. Run: pip install deep-translator"
+        ) from e
+
+    text = text.strip()
+    if not text:
+        return ""
+
+    translator = GoogleTranslator(source=source_lang, target=target_lang)
+
+    # Fast path: short enough to send in one call.
+    if len(text) <= _TRANSLATE_CHUNK_LIMIT:
+        if progress:
+            progress(0, 1)
+        out = translator.translate(text) or ""
+        if progress:
+            progress(1, 1)
+        return out
+
+    # Slow path: split on double newlines, then on sentences for any
+    # paragraph that itself exceeds the limit.
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    def _flush():
+        nonlocal current, current_len
+        if current:
+            chunks.append("\n\n".join(current))
+            current = []
+            current_len = 0
+
+    for paragraph in text.split("\n\n"):
+        plen = len(paragraph)
+        if plen > _TRANSLATE_CHUNK_LIMIT:
+            _flush()
+            # Split this paragraph into sentence-sized pieces
+            sentences = re.split(r"(?<=[.!?…])\s+", paragraph)
+            sub: list[str] = []
+            sub_len = 0
+            for sentence in sentences:
+                slen = len(sentence)
+                if sub_len + slen > _TRANSLATE_CHUNK_LIMIT and sub:
+                    chunks.append(" ".join(sub))
+                    sub = []
+                    sub_len = 0
+                sub.append(sentence)
+                sub_len += slen + 1
+            if sub:
+                chunks.append(" ".join(sub))
+        else:
+            if current_len + plen > _TRANSLATE_CHUNK_LIMIT and current:
+                _flush()
+            current.append(paragraph)
+            current_len += plen + 2
+    _flush()
+
+    total = len(chunks)
+    out_parts: list[str] = []
+    for i, c in enumerate(chunks):
+        if progress:
+            progress(i, total)
+        out_parts.append(translator.translate(c) or "")
+    if progress:
+        progress(total, total)
+    return "\n\n".join(out_parts)
