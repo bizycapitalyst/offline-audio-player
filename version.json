@@ -1,5 +1,5 @@
 {
-  "version": "1.7.3",
+  "version": "1.7.4",
   "released": "2026-05-09",
-  "notes": "(1) Follow highlights are more visible — bumped the active-block / speaking-sentence background from 13% to 22% blue, and thickened the left accent bar from 2px to 3px. (2) Follow chip color tracks state: amber/yellow when off (idle, inviting tap), blue when on (active, matches the follow-along highlight)."
+  "notes": "Update detection fix. The version-check was hitting raw.githubusercontent.com, which has a 5–30 minute CDN cache that the client's no-store can't defeat — meaning a freshly pushed release would say 'Up to date' until the upstream cache expired. Switched to the same-origin URL (./version.json on GitHub Pages, which propagates pushes within ~1 minute) and added a cache-bust query parameter to defeat any remaining cache layer. The service worker now also bypasses version.json entirely so its own cache can't hold a stale response. Also includes the v1.7.3 changes: stronger follow highlight (22% blue / 3px bar) and amber-when-off / blue-when-on Follow chip."
 }

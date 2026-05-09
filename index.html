@@ -823,8 +823,11 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.3';
-const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
+const APP_VERSION = '1.7.4';
+// Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
+// (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
+// which was causing the "Up to date" false-negative after a fresh push.)
+const VERSION_URL = './version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
 let swReg = null;
@@ -982,7 +985,9 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   async function checkForUpdate(silent){
     if (!silent) updateBtn.textContent = 'Checking…';
     try {
-      const r = await fetch(VERSION_URL, { cache: 'no-store' });
+      // Cache-bust query param defeats GH-Pages CDN, browser cache, and any SW
+      // cache layer that might still hold an older version.json response.
+      const r = await fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       if (j && j.version && compareVersions(APP_VERSION, j.version) < 0){

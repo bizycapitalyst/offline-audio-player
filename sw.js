@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the shell changes; clients pick it up on next load.
  */
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE = `offline-audio-player-${CACHE_VERSION}`;
 
 const SHELL = [
@@ -50,15 +50,19 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(req.url);
 
-  // Only handle same-origin requests; let cross-origin (e.g. version check) hit network.
+  // Only handle same-origin requests; let cross-origin requests hit network.
   if (url.origin !== self.location.origin) return;
+
+  // Don't intercept the version-check at all. The in-app updater adds a
+  // cache-bust query string and we want the response uncontaminated by
+  // any caching layer, including the SW's own cache.
+  if (url.pathname.endsWith('/version.json')) return;
 
   const isShell =
     req.mode === 'navigate' ||
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('/index.html') ||
-    url.pathname.endsWith('/manifest.webmanifest') ||
-    url.pathname.endsWith('/version.json');
+    url.pathname.endsWith('/manifest.webmanifest');
 
   if (isShell){
     // Network-first: pull updates eagerly when online; fall back to cache when not.
