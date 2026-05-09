@@ -1,5 +1,5 @@
 {
-  "version": "1.9.1",
+  "version": "1.9.2",
   "released": "2026-05-09",
-  "notes": "Real PNG icons for Media Session and the manifest. The previous SVG-only icon set was being treated by Android Chrome as 'no usable raster artwork', which downgrades the page from rich-media-app status and pauses background audio when the user minimizes the app or turns off the screen. Generated headphones-192.png, headphones-512.png plus maskable variants from the same shape, declared them in manifest.webmanifest (purpose any + maskable), passed the 192/512 PNGs as MediaMetadata artwork, and pre-cached them in the service worker. SW cache bumped to v24 so the new shell rolls out cleanly."
+  "notes": "Background-audio fix: Android Chrome was issuing a Media Session 'pause' action the instant the PWA went to background, and our handler was honoring it. The pause handler is now conditional — pauses received within 1.8s of a visibility-to-hidden change are treated as OS-induced and ignored (audio keeps playing); pauses after the grace window are treated as genuine user actions (lockscreen tap, headphone button) and honored. Also: mediaSession.playbackState is now set to 'playing' synchronously before every audioEl.play(), and re-asserted on every visibility flip while audio is playing, so the OS can't claim it didn't know we were active media."
 }

@@ -942,7 +942,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.2';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1353,6 +1353,12 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         // the user backgrounded the app or turned off the screen.
         updateMediaSession(t);
         if (autoplay){
+          // Synchronously signal "playing" before play() resolves, so any
+          // OS-side check that fires between play() being issued and the
+          // 'play' event firing sees us as a real media app.
+          if ('mediaSession' in navigator){
+            try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
+          }
           try { await audioEl.play(); } catch(_) {}  // browsers may block w/o gesture
         }
         updatePlayPauseLabel();
@@ -1775,7 +1781,14 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       return;
     }
     if (!audioEl.src){ if (tracks.length) loadTrack(0); return; }
-    if (audioEl.paused) audioEl.play(); else audioEl.pause();
+    if (audioEl.paused){
+      if ('mediaSession' in navigator){
+        try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
+      }
+      audioEl.play();
+    } else {
+      audioEl.pause();
+    }
   };
   bindControl('playPauseBtn', playPause);
   bindControl('playPauseBtn2', playPause);
@@ -1906,15 +1919,24 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     if (loopMode === 2 && tracks.length) loadTrack((currentIdx + 1) % tracks.length); // Loop folder (wrap)
   });
 
+  // Tracks when the page last became hidden/visible. Used by the Media
+  // Session pause handler to distinguish OS-issued pauses (which fire
+  // within a fraction of a second of going to background) from
+  // user-issued pauses (lockscreen tap, headphone button — which happen
+  // well after the screen is off and the user picks up the device).
+  let _lastVisibilityChange = Date.now();
+  function reaffirmPlaying(){
+    if (!('mediaSession' in navigator)) return;
+    if (audioEl.paused) return;
+    try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
+  }
+
   function updateMediaSession(t){
     if (!('mediaSession' in navigator)) return;
     try {
       // Pass real PNG artwork at multiple sizes. Android Chrome shows this
-      // on the lockscreen media notification, and — critically — treats
-      // pages that supply proper raster artwork as full-fledged media
-      // apps for backgrounding decisions. SVG-only manifests / 1×1
-      // placeholder PNGs were causing the OS to downgrade us and pause
-      // playback whenever the app was minimized or the screen turned off.
+      // on the lockscreen media notification, and treats pages that supply
+      // proper raster artwork as full-fledged media apps.
       navigator.mediaSession.metadata = new MediaMetadata({
         title: t.baseName,
         artist: 'Offline Audio Player',
@@ -1924,8 +1946,25 @@ document.getElementById('appVersion').textContent = APP_VERSION;
           { src: './icons/headphones-512.png', sizes: '512x512', type: 'image/png' },
         ],
       });
-      navigator.mediaSession.setActionHandler('play', () => audioEl.play());
-      navigator.mediaSession.setActionHandler('pause', () => audioEl.pause());
+      navigator.mediaSession.setActionHandler('play', () => {
+        navigator.mediaSession.playbackState = 'playing';
+        audioEl.play().catch(()=>{});
+      });
+      // Conditional pause: when the OS sends a pause action within the
+      // first ~1.8s of visibility-to-hidden, it's almost certainly the
+      // backgrounding policy auto-pausing us, NOT the user. Ignore those —
+      // keep playing. After the grace window, treat any pause action as
+      // genuinely user-initiated (lockscreen tap, headphone button, etc.).
+      navigator.mediaSession.setActionHandler('pause', () => {
+        const sinceHide = Date.now() - _lastVisibilityChange;
+        if (document.hidden && sinceHide < 1800) {
+          // Defensively re-assert playing state so the OS doesn't keep
+          // showing a paused indicator.
+          try { navigator.mediaSession.playbackState = 'playing'; } catch(_) {}
+          return;
+        }
+        audioEl.pause();
+      });
       navigator.mediaSession.setActionHandler('previoustrack', goPrev);
       navigator.mediaSession.setActionHandler('nexttrack', goNext);
       navigator.mediaSession.setActionHandler('seekbackward', back15);
@@ -1963,7 +2002,14 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   audioEl.addEventListener('pause', releaseWakeLock);
   audioEl.addEventListener('ended', releaseWakeLock);
   document.addEventListener('visibilitychange', () => {
+    // Record the timestamp so the Media Session pause handler can ignore
+    // OS-induced pause actions that fire immediately on backgrounding.
+    _lastVisibilityChange = Date.now();
     if (!document.hidden && !audioEl.paused) acquireWakeLock();
+    // Re-assert "playing" to the OS on every visibility flip while audio
+    // is actively playing — defeats Chrome's tendency to assume a hidden
+    // page is no longer "actively media".
+    reaffirmPlaying();
   });
 
   // --- Text-to-Speech ---
