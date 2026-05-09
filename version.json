@@ -1,5 +1,5 @@
 {
-  "version": "1.9.2",
+  "version": "1.9.3",
   "released": "2026-05-09",
-  "notes": "Background-audio fix: Android Chrome was issuing a Media Session 'pause' action the instant the PWA went to background, and our handler was honoring it. The pause handler is now conditional — pauses received within 1.8s of a visibility-to-hidden change are treated as OS-induced and ignored (audio keeps playing); pauses after the grace window are treated as genuine user actions (lockscreen tap, headphone button) and honored. Also: mediaSession.playbackState is now set to 'playing' synchronously before every audioEl.play(), and re-asserted on every visibility flip while audio is playing, so the OS can't claim it didn't know we were active media."
+  "notes": "Diagnostics + Samsung guidance for the persistent 'audio cuts out on background' issue. Added a 'Diagnostic log' details section in the folder card that captures every audio-element lifecycle event (play/pause/playing/waiting/stalled/suspend/emptied/error), every visibility/focus/page-show-hide/freeze/resume event, and the audio's current time + paused state at each event. Persisted to localStorage so the log survives page kill. Also added a 'Samsung phones — required settings' help section pointing at One UI's Sleeping apps / Background usage limits / Adaptive battery / Auto-optimization toggles that override Chrome's Unrestricted setting."
 }
