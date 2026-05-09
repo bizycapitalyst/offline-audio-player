@@ -321,9 +321,20 @@
   .now-playing {
     font-size: 17px; font-weight: 600;
     letter-spacing: -0.01em;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
     word-break: break-word;
   }
+  .audio-state {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    min-height: 14px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .audio-state.warn { color: var(--bad); }
+  .audio-state.good { color: var(--good); }
 
   audio {
     width: 100%; margin-top: 4px;
@@ -726,6 +737,7 @@
 
     <div class="card" id="playerCard">
       <div class="now-playing" id="nowPlaying">Nothing playing</div>
+      <div class="audio-state" id="audioState"></div>
       <audio id="audioEl" controls preload="metadata" playsinline></audio>
       <div class="controls">
         <button id="prevBtn" title="Previous">⏮</button>
@@ -793,7 +805,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 const VERSION_URL = 'https://raw.githubusercontent.com/BizyCapitalyst/offline-audio-player/main/version.json';
 
 // --- Service Worker (offline cache + auto-update) ---
@@ -1077,9 +1089,21 @@ document.getElementById('appVersion').textContent = APP_VERSION;
 
   async function refToBlob(ref){
     if (!ref) throw new Error('No ref');
-    if (ref.file) return ref.file;
-    if (ref.handle) return await ref.handle.getFile();
-    throw new Error('No file reference');
+    let file;
+    if (ref.file) file = ref.file;
+    else if (ref.handle) file = await ref.handle.getFile();
+    else throw new Error('No file reference');
+    // Materialize the file into a RAM-backed Blob so playback (and transcript
+    // reads) don't depend on the FileSystemFileHandle staying valid. Android
+    // Chrome can revoke FS handles under memory pressure mid-playback —
+    // symptom: the audio element's currentTime keeps advancing but no audio
+    // comes out (data stream stalls while the playback clock simulates).
+    try {
+      const buf = await file.arrayBuffer();
+      return new Blob([buf], { type: file.type || '' });
+    } catch(_) {
+      return file;  // fall back to streamed file blob
+    }
   }
 
   async function loadTrack(idx, opts = {}){
@@ -1362,6 +1386,29 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   audioEl.addEventListener('seeked', updateMediaSessionPosition);
   audioEl.addEventListener('ratechange', updateMediaSessionPosition);
   audioEl.addEventListener('loadedmetadata', updateMediaSessionPosition);
+
+  // --- Audio diagnostic state indicator ---
+  // Surfaces the audio element's lifecycle events under the now-playing
+  // label so unexpected stalls/errors are visible to the user.
+  const audioStateEl = $('audioState');
+  function setAudioState(msg, cls=''){
+    if (!audioStateEl) return;
+    audioStateEl.textContent = msg || '';
+    audioStateEl.className = 'audio-state' + (cls ? ' ' + cls : '');
+  }
+  audioEl.addEventListener('loadstart',   () => setAudioState('loading'));
+  audioEl.addEventListener('loadedmetadata', () => setAudioState('ready'));
+  audioEl.addEventListener('canplay',     () => setAudioState(''));
+  audioEl.addEventListener('playing',     () => setAudioState(''));
+  audioEl.addEventListener('waiting',     () => setAudioState('buffering', 'warn'));
+  audioEl.addEventListener('stalled',     () => setAudioState('stalled (no data)', 'warn'));
+  audioEl.addEventListener('suspend',     () => { /* normal — browser stopped fetching after enough data */ });
+  audioEl.addEventListener('emptied',     () => setAudioState(''));
+  audioEl.addEventListener('error', () => {
+    const e = audioEl.error;
+    const codeMap = { 1: 'aborted', 2: 'network', 3: 'decode', 4: 'unsupported' };
+    setAudioState('error: ' + (codeMap[e?.code] || 'unknown'), 'warn');
+  });
 
   transcriptEl.addEventListener('scroll', () => {
     if (suppressScrollDetect) return;

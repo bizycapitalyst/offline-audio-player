@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "released": "2026-05-09",
-  "notes": "Two fixes. (1) TTS now always speaks with US English pronunciation: u.lang is forced to 'en-US' on every utterance regardless of the underlying voice's reported lang, and the auto-picked voice strictly prefers en-US (with rank-quality sort within US voices). (2) Audio stall fix: moved navigator.mediaSession.setPositionState out of the per-timeupdate hot path (called ~4×/sec, which makes Chrome on Android mark audio as stalled and pause it). Now called only on discrete state changes — play, pause, seek, ratechange, loadedmetadata. Service worker cache bumped to v4 to flush stale caches from earlier versions."
+  "notes": "(1) Audio file is now read fully into RAM as an ArrayBuffer-backed Blob before being handed to the audio element. Symptom of the old behavior: the playback clock advanced but no sound — typical of Android Chrome revoking the underlying FileSystemFileHandle mid-playback while the streaming Blob URL is still bound to <audio>. The in-memory Blob severs that dependency. (2) Added a live audio-state indicator under the now-playing label that surfaces lifecycle events (loading / buffering / stalled / error). If audio cuts out, the indicator shows what state the element is in. SW cache bumped to v5."
 }
