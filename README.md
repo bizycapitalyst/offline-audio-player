@@ -36,28 +36,70 @@ For any **regular audio file** (mp3, m4a, wav, ogg, opus, flac, aac, webm), back
 
 The browser's built-in Read-Aloud uses the Web Speech API, which **most mobile browsers pause when backgrounded.** The fix is to render the transcript to an MP3 once on your PC, then play that MP3 — which gets full background treatment.
 
-Included is `prerender.py`, a small script that does this with Microsoft Edge's neural TTS (free, no API key, US English voices).
+Included are **four entry points** that all use the same engine (Microsoft Edge's neural TTS, free, no API key, US English voices). Pick whichever fits how you work.
+
+### 1. CLI — `prerender.py`
+
+Fastest if you live in a terminal. Walks a folder, generates one MP3 per text file.
 
 ```bash
 pip install -r requirements.txt
 python prerender.py /path/to/your/audio/folder
 ```
 
-For each `.md` / `.txt` file in that folder that doesn't already have a matching audio file, it produces a same-base-name `.mp3` using a US voice with natural pacing. Sync that folder to your phone and the player picks them up automatically.
-
 Common options:
 
 ```bash
-python prerender.py --voice jenny             # different US voice
-python prerender.py --rate -10%               # slower
-python prerender.py --rate +5%                # faster
-python prerender.py --force                   # re-render even if mp3 exists
-python prerender.py --list-voices             # see available voices
+python prerender.py --voice jenny       # different US voice
+python prerender.py --rate -10%         # slower
+python prerender.py --force             # re-render even if mp3 exists
+python prerender.py --list-voices       # see available voices
 ```
 
-US voice presets: `aria` (default), `jenny`, `guy`, `ana`, `christopher`, `eric`, `michelle`, `roger`, `steffan`.
+### 2. Desktop GUI — `prerender_gui.py`
 
-The script needs network only at generation time. The resulting MP3s play offline.
+Tkinter app: drag-and-drop files (or pick via dialog), choose voice / rate / pitch with sliders, watch a progress bar, see a per-file log.
+
+```bash
+python prerender_gui.py
+```
+
+### 3. Local web app — `prerender_web.py`
+
+Same engine, browser UI. Useful cross-platform or if you want to render from another device on the same Wi-Fi.
+
+```bash
+python prerender_web.py            # opens http://127.0.0.1:8765/
+python prerender_web.py --port 9000 --host 0.0.0.0   # LAN-accessible
+```
+
+### 4. Standalone Windows `.exe` — `build_exe.bat`
+
+Bundles the GUI into a single double-clickable executable. No Python needed on the target machine.
+
+```bat
+pip install pyinstaller
+build_exe.bat
+```
+
+Produces `dist\TTS_Converter.exe` (~30–50 MB). Copy it anywhere; it runs standalone.
+
+### Supported input formats
+
+All four entry points accept:
+
+| Extension | Source | Library |
+|---|---|---|
+| `.txt`, `.md`, `.markdown` | plain / markdown text | stdlib |
+| `.docx` | Microsoft Word documents | `python-docx` |
+| `.pdf` | PDFs (text extracted via PyPDF) | `pypdf` |
+| `.epub` | EPUB ebooks (chapter HTML stripped to plain text) | `ebooklib` + `beautifulsoup4` |
+
+Each MP3 is written next to the source file by default. The GUI lets you pick a different output folder.
+
+US voice presets: `aria` (default), `jenny`, `guy`, `ana`, `christopher`, `eric`, `michelle`, `roger`, `steffan`. Or supply any full Edge voice name (e.g. `en-GB-RyanNeural`) directly.
+
+Network is needed only at generation time. The resulting MP3s play offline.
 
 ## Transcript timestamps
 
@@ -86,8 +128,12 @@ Recognized formats: `[h:mm:ss]`, `[mm:ss]`, `(mm:ss)`, `01:02:03`, with optional
 | `sw.js` | Service worker — caches the shell, network-first for updates. |
 | `manifest.webmanifest` | PWA metadata, icon, theme. |
 | `version.json` | Version polled by the in-app update check. |
-| `prerender.py` | TTS pre-renderer for background-capable transcript playback. |
-| `requirements.txt` | Python deps for `prerender.py`. |
+| `tts_lib.py` | Shared library — TTS rendering + multi-format text extraction (`.txt` / `.md` / `.docx` / `.pdf` / `.epub`). |
+| `prerender.py` | CLI entry point — walks a folder, renders unrendered text files. |
+| `prerender_gui.py` | Tkinter desktop GUI — drag-drop, voice picker, progress bar. |
+| `prerender_web.py` | Local web app — same engine in a browser UI at `http://127.0.0.1:8765/`. |
+| `build_exe.bat` | PyInstaller bundler — produces a single-file `TTS_Converter.exe`. |
+| `requirements.txt` | Python deps for all four converter entry points. |
 
 ## License
 
