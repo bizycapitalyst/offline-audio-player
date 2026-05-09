@@ -929,7 +929,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.7';
+const APP_VERSION = '1.8.8';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1770,19 +1770,21 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   // get the familiar "−15s" / "+15s" time-jump labels; text-only tracks
   // get "−¶" / "+¶" paragraph navigation labels. Both sets of buttons
   // (main + mini-controls in maximized transcript view) update together.
+  // The ¶ glyph is wrapped in a span so it can be visually scaled up
+  // (via .para-glyph CSS) without expanding the button's layout box.
   function updateSkipButtonsForTrack(t) {
     const isText = !!(t && t.kind === 'text');
-    const backLabel = isText ? '−¶' : '−15s';
-    const fwdLabel  = isText ? '+¶' : '+15s';
+    const backHtml = isText ? '−<span class="para-glyph">¶</span>' : '−15s';
+    const fwdHtml  = isText ? '+<span class="para-glyph">¶</span>' : '+15s';
     const backTitle = isText ? 'Back one paragraph' : 'Back 15s';
     const fwdTitle  = isText ? 'Forward one paragraph' : 'Forward 15s';
     ['back15Btn','back15Btn2'].forEach(id => {
       const b = document.getElementById(id);
-      if (b) { b.textContent = backLabel; b.title = backTitle; b.setAttribute('aria-label', backTitle); }
+      if (b) { b.innerHTML = backHtml; b.title = backTitle; b.setAttribute('aria-label', backTitle); }
     });
     ['fwd15Btn','fwd15Btn2'].forEach(id => {
       const b = document.getElementById(id);
-      if (b) { b.textContent = fwdLabel; b.title = fwdTitle; b.setAttribute('aria-label', fwdTitle); }
+      if (b) { b.innerHTML = fwdHtml; b.title = fwdTitle; b.setAttribute('aria-label', fwdTitle); }
     });
   }
 
@@ -2032,10 +2034,22 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   function stopWatchdog(){ if (ttsState.watchdog){ clearInterval(ttsState.watchdog); ttsState.watchdog = null; } }
   function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-  async function runTtsLoop(){
+  // Generation token: every call to startReading bumps it, and runTtsLoop
+  // captures the value at start. If a newer startReading runs (e.g. user
+  // taps +¶ to seek), the older runTtsLoop sees its captured token no
+  // longer matches and exits before incrementing the shared index.
+  // Without this, the old and new loops race on ttsState.index and
+  // sentences appear to "skip ahead" several paragraphs per tap.
+  let _ttsGen = 0;
+
+  async function runTtsLoop(myGen){
     startWatchdog();
     while (ttsState.active && ttsState.index < ttsState.sentences.length){
-      while (ttsState.paused && !ttsState.cancelling){ await wait(120); }
+      if (myGen !== _ttsGen) return;
+      while (ttsState.paused && !ttsState.cancelling){
+        if (myGen !== _ttsGen) return;
+        await wait(120);
+      }
       if (ttsState.cancelling) break;
       const span = ttsState.sentences[ttsState.index];
       highlightSpan(span);
@@ -2044,16 +2058,19 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       // indicator. If playback wedges, you can see exactly where.
       setAudioState(`tts ${ttsState.index + 1}/${ttsState.sentences.length}`);
       await speakUtterance(text);
+      if (myGen !== _ttsGen) return;
       if (ttsState.cancelling) break;
       const ms = pauseAfter(span, +pauseSlider.value || 280);
       if (ms > 0){
         const start = Date.now();
         while (Date.now() - start < ms){
+          if (myGen !== _ttsGen) return;
           if (ttsState.cancelling) break;
           if (ttsState.paused){ await wait(80); continue; }
           await wait(Math.min(80, ms - (Date.now() - start)));
         }
       }
+      if (myGen !== _ttsGen) return;
       ttsState.index++;
     }
     stopWatchdog();
@@ -2074,7 +2091,10 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     ttsState.sentences = allSpans;
     ttsState.index = Math.max(0, Math.min(fromIndex, allSpans.length - 1));
     setReadingControls(true);
-    runTtsLoop();
+    // Bump the generation so any in-flight runTtsLoop bails on its next
+    // checkpoint. Pass the new generation to the new loop so it knows
+    // which token it's responsible for.
+    runTtsLoop(++_ttsGen);
   }
   function stopReading(silent){
     if (!ttsState.active && !(synth && synth.speaking)) return;
