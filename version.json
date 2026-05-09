@@ -1,5 +1,5 @@
 {
-  "version": "1.7.8",
+  "version": "1.7.9",
   "released": "2026-05-07",
-  "notes": "Loop button is now an icon that cycles three states: ▶| Play once and stop, ↻¹ Loop the current track, ↻ Loop the entire folder. The icon itself communicates the mode — no more 'Loop: Off / One / All' text label. State 0 (Play once) used to advance through the folder until end; it now genuinely stops after the current track. States 1 and 2 unchanged."
+  "notes": "Cool palette — Rescan, Check for updates, the toggle icon set (incl. loop default), and the version chip all use the theme's blue as their default state. Active loop modes (Loop one, Loop folder) still flip to amber so engaged states pop. Resume-after-update — if audio is playing when you tap the green update chip, the post-reload init seeks back to the same playhead position (and best-effort autoplay) so the update is invisible mid-listening. State persists for 60 seconds across the reload, then clears."
 }

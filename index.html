@@ -134,9 +134,9 @@
     font-size: 10.5px; font-weight: 600;
     padding: 4px 10px;
     border-radius: 999px;
-    background: var(--bg-tile);
-    color: var(--text-dim);
-    border: 1px solid var(--border);
+    background: var(--blue-soft);
+    color: var(--blue);
+    border: 1px solid rgba(96,165,250,0.4);
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
@@ -304,13 +304,13 @@
     width: auto;
     padding: 6px 11px;
     font-size: 11px; font-weight: 600;
-    color: var(--text-dim);
-    background: var(--bg-tile);
-    border: 1px solid var(--border);
+    color: var(--blue);
+    background: var(--blue-soft);
+    border: 1px solid rgba(96,165,250,0.4);
     border-radius: 999px;
     letter-spacing: 0.04em;
   }
-  button.icon:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+  button.icon:hover:not(:disabled) { background: rgba(96,165,250,0.20); color: var(--blue); }
   button.icon.toggled {
     background: var(--accent-soft);
     border-color: rgba(251,191,36,0.4);
@@ -572,14 +572,22 @@
 
   /* Loop-mode icon button — cycles through three states:
        0 = play once and stop, 1 = loop current, 2 = loop folder.
-     Icon is swapped from JS each tap; this styling just centers and
-     sizes whatever SVG is inside. */
+     Default styling = theme blue (matches the rest of the toggle icon
+     set). When an active loop mode (1 or 2) is engaged, the .active
+     class flips it to amber so the engaged state is visually obvious. */
   .loop-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     padding: 11px 6px;
+    background: var(--blue-soft);
+    border-color: rgba(96,165,250,0.4);
+    color: var(--blue);
+  }
+  .loop-btn:hover:not(:disabled) {
+    background: rgba(96,165,250,0.20);
+    color: var(--blue);
   }
   .loop-btn svg {
     width: 22px;
@@ -590,6 +598,25 @@
     background: var(--accent-soft);
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
+  }
+  .loop-btn.active:hover:not(:disabled) {
+    background: rgba(251,191,36,0.20);
+    color: var(--accent);
+  }
+
+  /* Rescan and Check-for-updates buttons share the toggle-icon blue
+     palette so the cool-toned action chips read as a related set. */
+  button#rescanBtn,
+  button#updateBtn {
+    background: var(--blue-soft);
+    border-color: rgba(96,165,250,0.4);
+    color: var(--blue);
+  }
+  button#rescanBtn:hover:not(:disabled),
+  button#updateBtn:hover:not(:disabled) {
+    background: rgba(96,165,250,0.20);
+    border-color: var(--blue);
+    color: var(--blue);
   }
 
   .speed-pill {
@@ -787,15 +814,19 @@
       <div class="audio-state" id="audioState"></div>
       <audio id="audioEl" controls preload="metadata" playsinline></audio>
       <div class="controls">
-        <button id="prevBtn" title="Previous">⏮</button>
+        <button id="prevBtn" class="shuttle-btn" title="Previous" aria-label="Previous track">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4" stroke="none"/><line x1="5" y1="19" x2="5" y2="5" fill="none"/></svg>
+        </button>
         <button id="back15Btn" title="Back 15s">−15s</button>
         <button id="playPauseBtn" class="primary" title="Play/Pause">▶</button>
         <button id="fwd15Btn" title="Forward 15s">+15s</button>
-        <button id="nextBtn" title="Next">⏭</button>
+        <button id="nextBtn" class="shuttle-btn" title="Next" aria-label="Next track">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20" stroke="none"/><line x1="19" y1="5" x2="19" y2="19" fill="none"/></svg>
+        </button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
         <button id="loopBtn" class="loop-btn" aria-label="Loop mode" title="Loop mode"></button>
+        <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
       </div>
     </div>
 
@@ -847,7 +878,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.8';
+const APP_VERSION = '1.7.9';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1031,6 +1062,21 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     return null;
   }
   async function applyUpdate(){
+    // If audio is loaded, save the current track/time/playing state so
+    // the post-reload init can pick up exactly where we left off. Stored
+    // under a separate key (oap.resumeAfterUpdate) so a regular page
+    // reload — without an update — never accidentally seeks forward.
+    try {
+      const t = tracks[currentIdx];
+      if (t && t.kind === 'audio' && audioEl && !isNaN(audioEl.currentTime)) {
+        localStorage.setItem('oap.resumeAfterUpdate', JSON.stringify({
+          trackBase: t.baseName,
+          time: audioEl.currentTime,
+          wasPlaying: !audioEl.paused,
+          savedAt: Date.now()
+        }));
+      }
+    } catch (_) {}
     // The previous version did `await swReg.update(); location.reload()` which
     // had a race: the reload often fired before the freshly-installed service
     // worker had taken control of the page, so the FIRST reload was still
@@ -1157,10 +1203,42 @@ document.getElementById('appVersion').textContent = APP_VERSION;
         const i = tracks.findIndex(tr => tr.baseName === saved.trackBaseName);
         if (i >= 0){
           // Defer one frame so the dropdown is fully populated.
-          requestAnimationFrame(() => loadTrack(i, { autoplay: false }));
+          requestAnimationFrame(async () => {
+            await loadTrack(i, { autoplay: false });
+            tryResumeAfterUpdate();
+          });
         }
       }
     }
+  }
+
+  // If applyUpdate() saved a resume marker before the page reload, this
+  // restores the audio's playhead to where it was and (best-effort)
+  // resumes playback. Cleared after first use; a 60s freshness window
+  // prevents accidental resume if the marker survives some other reload.
+  function tryResumeAfterUpdate(){
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem('oap.resumeAfterUpdate') || 'null'); } catch (_) {}
+    if (!s) return;
+    if (Date.now() - (s.savedAt || 0) > 60000) {
+      try { localStorage.removeItem('oap.resumeAfterUpdate'); } catch (_) {}
+      return;
+    }
+    const t = tracks[currentIdx];
+    if (!t || t.baseName !== s.trackBase) return;
+    const apply = () => {
+      audioEl.removeEventListener('loadedmetadata', apply);
+      try { audioEl.currentTime = Math.max(0, s.time - 0.25); } catch (_) {}
+      if (s.wasPlaying) {
+        // Mobile autoplay policies may block this if user activation
+        // didn't carry across the reload. We try; if rejected the user
+        // still lands on the right position and one tap on Play resumes.
+        audioEl.play().catch(() => {});
+      }
+    };
+    if (audioEl.readyState >= 1) apply();
+    else audioEl.addEventListener('loadedmetadata', apply);
+    try { localStorage.removeItem('oap.resumeAfterUpdate'); } catch (_) {}
   }
 
   async function refToBlob(ref){
