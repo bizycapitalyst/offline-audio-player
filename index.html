@@ -370,12 +370,25 @@
 
   .controls {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 6px;
     margin-top: 12px;
   }
   .controls button { padding: 11px 6px; font-size: 13px; font-weight: 500; }
   .controls button.primary { padding: 11px 6px; }
+  /* Prev / Next icon buttons — SVG centered, sized to match the text
+     buttons in this row visually. Matching icon language between Prev
+     and Next; they're left/right mirrors of the same shape. */
+  .shuttle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .shuttle-btn svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+  }
 
   /* --- Transcript card --- */
   .transcript-card { position: relative; }
@@ -570,11 +583,11 @@
     font-family: "SF Mono", "Monaco", "Consolas", monospace;
   }
 
-  /* Loop-mode icon button — cycles through three states:
-       0 = play once and stop, 1 = loop current, 2 = loop folder.
-     Default styling = theme blue (matches the rest of the toggle icon
-     set). When an active loop mode (1 or 2) is engaged, the .active
-     class flips it to amber so the engaged state is visually obvious. */
+  /* Loop-mode icon button — cycles through three states (slashed-repeat
+     / repeat-with-1 / repeat). All three states use the theme's blue
+     palette; the icon itself distinguishes the mode. Active states get
+     a slightly more saturated background so an engaged loop is
+     subtly stronger visually without breaking the cool palette. */
   .loop-btn {
     display: inline-flex;
     align-items: center;
@@ -595,13 +608,13 @@
     flex-shrink: 0;
   }
   .loop-btn.active {
-    background: var(--accent-soft);
-    border-color: rgba(251,191,36,0.4);
-    color: var(--accent);
+    background: rgba(96,165,250,0.28);
+    border-color: var(--blue);
+    color: var(--blue);
   }
   .loop-btn.active:hover:not(:disabled) {
-    background: rgba(251,191,36,0.20);
-    color: var(--accent);
+    background: rgba(96,165,250,0.38);
+    color: var(--blue);
   }
 
   /* Rescan and Check-for-updates buttons share the toggle-icon blue
@@ -818,6 +831,7 @@
           <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4" stroke="none"/><line x1="5" y1="19" x2="5" y2="5" fill="none"/></svg>
         </button>
         <button id="back15Btn" title="Back 15s">−15s</button>
+        <button id="loopBtn" class="loop-btn" aria-label="Loop mode" title="Loop mode"></button>
         <button id="playPauseBtn" class="primary" title="Play/Pause">▶</button>
         <button id="fwd15Btn" title="Forward 15s">+15s</button>
         <button id="nextBtn" class="shuttle-btn" title="Next" aria-label="Next track">
@@ -825,7 +839,6 @@
         </button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button id="loopBtn" class="loop-btn" aria-label="Loop mode" title="Loop mode"></button>
         <button id="speedBtn">Speed <span class="speed-pill" id="speedLabel">1.0×</span></button>
       </div>
     </div>
@@ -878,7 +891,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.9';
+const APP_VERSION = '1.8.1';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1729,8 +1742,8 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   const LOOP_STATES = [
     {
       name: 'Play once',
-      title: 'Play this track and stop',
-      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 17 12 5 20" fill="currentColor"/><line x1="20" y1="4" x2="20" y2="20"/></svg>'
+      title: 'Play this track and stop (no loop)',
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><line x1="4" y1="4" x2="20" y2="20" stroke-width="2.5"/></svg>'
     },
     {
       name: 'Loop one',
