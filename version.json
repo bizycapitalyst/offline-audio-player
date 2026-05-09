@@ -1,5 +1,5 @@
 {
-  "version": "1.7.4",
-  "released": "2026-05-09",
-  "notes": "Update detection fix. The version-check was hitting raw.githubusercontent.com, which has a 5–30 minute CDN cache that the client's no-store can't defeat — meaning a freshly pushed release would say 'Up to date' until the upstream cache expired. Switched to the same-origin URL (./version.json on GitHub Pages, which propagates pushes within ~1 minute) and added a cache-bust query parameter to defeat any remaining cache layer. The service worker now also bypasses version.json entirely so its own cache can't hold a stale response. Also includes the v1.7.3 changes: stronger follow highlight (22% blue / 3px bar) and amber-when-off / blue-when-on Follow chip."
+  "version": "1.7.7",
+  "released": "2026-05-07",
+  "notes": "Title bar (app header) is now sticky — stays pinned at the top while the rest of the page scrolls behind it. Maximized transcript still hides the header (more reading room). Maximizing/minimizing the transcript now auto-resumes Follow when the chip is on (no Resume pill required); when the chip is off, neither autoscroll nor the Resume pill show up — Follow truly disabled."
 }

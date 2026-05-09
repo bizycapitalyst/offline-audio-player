@@ -91,9 +91,17 @@
   body.is-maximized header.app-header { display: none; }
   ::selection { background: var(--accent-soft); color: var(--text); }
 
-  /* --- Header --- */
+  /* --- Header ---
+     Sticky so the title bar stays visible at the top while the rest of
+     the page scrolls behind it. Solid background hides the radial halo
+     and any content sliding underneath. body.is-maximized hides the
+     whole header (rule below) so the sticky behavior is moot in
+     maximized-transcript mode. */
   header.app-header {
-    position: relative; z-index: 2;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
     display: flex; align-items: center; gap: 12px;
     justify-content: space-between;
     padding: 14px 14px 18px;
@@ -308,28 +316,22 @@
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
   }
-  /* Follow chip color tracks state:
-       OFF (idle / "you can turn this on") = theme amber/yellow pill
-       ON  (engaged / "follow is active")  = theme blue (matches the
-       follow-along highlight color so the chip and the highlight read
-       as the same feature). */
-  button#followBtn {
+  /* Follow chip uses the theme's yellow styling at all times — the
+     blue "toggled" state was confusing because the visible color
+     desynced from the actual follow state on minimize/maximize and
+     after manual toggles. State is still indicated by the follow-along
+     highlight in the transcript itself. */
+  button#followBtn,
+  button#followBtn.toggled {
     background: var(--accent-soft);
     border-color: rgba(251,191,36,0.4);
     color: var(--accent);
   }
-  button#followBtn:hover:not(:disabled) {
+  button#followBtn:hover:not(:disabled),
+  button#followBtn.toggled:hover:not(:disabled) {
     background: rgba(251,191,36,0.20);
     border-color: var(--accent);
     color: var(--accent);
-  }
-  button#followBtn.toggled {
-    background: var(--blue);
-    border-color: var(--blue);
-    color: #07101e;
-  }
-  button#followBtn.toggled:hover:not(:disabled) {
-    filter: brightness(1.06);
   }
 
   .row { display: flex; gap: 8px; }
@@ -477,8 +479,8 @@
     transition: background 200ms var(--ease);
   }
   .transcript .ts-block.active {
-    background: rgba(96, 165, 250, 0.22);
-    box-shadow: inset 3px 0 0 var(--blue);
+    background: rgba(251, 191, 36, 0.30);
+    box-shadow: inset 4px 0 0 var(--accent);
   }
   .transcript .ts-tag {
     display: inline-block;
@@ -495,9 +497,9 @@
     border: 1px solid var(--border-soft);
   }
   .transcript .ts-tag:hover { background: var(--blue-soft); color: var(--blue); border-color: rgba(96,165,250,0.4); }
-  /* Speaking sentence — TTS active. Uses the theme's blue (same as the
-     audio-playback active block above) so all follow-along highlights
-     share one visual language; amber is reserved for action buttons. */
+  /* Speaking sentence — TTS active. Uses the theme's amber/yellow
+     (same as the audio-playback active block above) so both follow-along
+     highlights share one visual language. */
   .transcript .ts-sentence {
     padding: 1px 2px;
     border-radius: 3px;
@@ -505,8 +507,8 @@
     transition: background 200ms var(--ease);
   }
   .transcript .ts-sentence.speaking {
-    background: rgba(96, 165, 250, 0.22);
-    box-shadow: inset 3px 0 0 var(--blue);
+    background: rgba(251, 191, 36, 0.30);
+    box-shadow: inset 4px 0 0 var(--accent);
   }
 
   .empty {
@@ -823,7 +825,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.7.4';
+const APP_VERSION = '1.7.7';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1389,10 +1391,22 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     clearTimeout(scrollResetTimer);
     scrollResetTimer = setTimeout(() => { suppressScrollDetect = false; }, 600);
   }
+  // In maximized view there's lots of vertical room so we keep the active
+  // block centered (gives reading context above/below). In minimized view
+  // the transcript card is short — centering wastes the lower half on
+  // already-spoken text, so we pin the active block to the top instead
+  // (with a small breathing-room offset).
   function scrollElementIntoCenter(el){
     const cRect = transcriptEl.getBoundingClientRect();
     const eRect = el.getBoundingClientRect();
-    const target = transcriptEl.scrollTop + (eRect.top - cRect.top) - (transcriptEl.clientHeight / 2) + (el.offsetHeight / 2);
+    const isMaximized = transcriptCard.classList.contains('maximized');
+    let target;
+    if (isMaximized) {
+      target = transcriptEl.scrollTop + (eRect.top - cRect.top)
+             - (transcriptEl.clientHeight / 2) + (el.offsetHeight / 2);
+    } else {
+      target = transcriptEl.scrollTop + (eRect.top - cRect.top) - 6;
+    }
     programmaticScrollTo(Math.max(0, target));
   }
   function syncTranscriptToTime(){
@@ -1513,10 +1527,19 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     document.body.classList.toggle('is-maximized', on);
     maximizeBtn.textContent = on ? '⤡' : '⤢';
     maximizeBtn.title = on ? 'Exit maximize' : 'Maximize transcript';
+    // Maximizing or minimizing always resets the follow state to its
+    // chip preference: if Follow is on, auto-resume (no Resume pill, no
+    // tap required); if Follow is off, leave the transcript alone.
+    if (!followEnabled) {
+      resumePill.classList.remove('show');
+      return;
+    }
+    userScrollPaused = false;
+    resumePill.classList.remove('show');
     requestAnimationFrame(() => {
       if (ttsState.active && ttsState.currentSpan) scrollElementIntoCenter(ttsState.currentSpan);
       else if (activeBlockEl) scrollElementIntoCenter(activeBlockEl);
-      else if (followEnabled && !userScrollPaused) syncTranscriptToTime();
+      else syncTranscriptToTime();
     });
   }
   maximizeBtn.addEventListener('click', () => setMaximized(!transcriptCard.classList.contains('maximized')));
