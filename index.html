@@ -921,7 +921,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.8.5';
+const APP_VERSION = '1.8.6';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -1311,6 +1311,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     nowPlaying.textContent = t.name;
     trackSelect.value = String(idx);
     setTrackStepStatus(`${idx + 1} of ${tracks.length}`, 'good');
+    updateSkipButtonsForTrack(t);
 
     // Persist the chosen track baseName so we can re-select it next session.
     saveSession({ trackBaseName: t.baseName });
@@ -1757,8 +1758,75 @@ document.getElementById('appVersion').textContent = APP_VERSION;
 
   const goPrev = () => { if (!tracks.length) return; loadTrack(currentIdx <= 0 ? tracks.length - 1 : currentIdx - 1, { autoplay: false }); };
   const goNext = () => { if (!tracks.length) return; loadTrack((currentIdx + 1) % tracks.length, { autoplay: false }); };
-  const back15 = () => { audioEl.currentTime = Math.max(0, audioEl.currentTime - 15); };
-  const fwd15 = () => { audioEl.currentTime = Math.min(audioEl.duration || 0, audioEl.currentTime + 15); };
+  // Swap the skip-button labels/tooltips when a track loads. Audio tracks
+  // get the familiar "−15s" / "+15s" time-jump labels; text-only tracks
+  // get "−¶" / "+¶" paragraph navigation labels. Both sets of buttons
+  // (main + mini-controls in maximized transcript view) update together.
+  function updateSkipButtonsForTrack(t) {
+    const isText = !!(t && t.kind === 'text');
+    const backLabel = isText ? '−¶' : '−15s';
+    const fwdLabel  = isText ? '+¶' : '+15s';
+    const backTitle = isText ? 'Back one paragraph' : 'Back 15s';
+    const fwdTitle  = isText ? 'Forward one paragraph' : 'Forward 15s';
+    ['back15Btn','back15Btn2'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) { b.textContent = backLabel; b.title = backTitle; b.setAttribute('aria-label', backTitle); }
+    });
+    ['fwd15Btn','fwd15Btn2'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) { b.textContent = fwdLabel; b.title = fwdTitle; b.setAttribute('aria-label', fwdTitle); }
+    });
+  }
+
+  // Skip-back / skip-forward dispatch: 15s audio jumps when an audio track
+  // is loaded, paragraph navigation when a pure-text track is loaded.
+  // For text+audio paired tracks (kind === 'audio' with a textRef), the
+  // audio path wins — audioEl.currentTime is the source of truth there.
+  const back15 = () => {
+    const t = tracks[currentIdx];
+    if (t && t.kind === 'text') { navigateByParagraph(-1); return; }
+    audioEl.currentTime = Math.max(0, audioEl.currentTime - 15);
+  };
+  const fwd15 = () => {
+    const t = tracks[currentIdx];
+    if (t && t.kind === 'text') { navigateByParagraph(+1); return; }
+    audioEl.currentTime = Math.min(audioEl.duration || 0, audioEl.currentTime + 15);
+  };
+
+  // Paragraph-grain navigation for TTS-driven text-only tracks. Forward
+  // jumps to the first sentence of the next <p>/<li>/<blockquote>. Back
+  // jumps to the start of the current paragraph if mid-way through, else
+  // to the first sentence of the previous paragraph (mirrors how audio
+  // -15s feels: re-listen-from-start before stepping back).
+  function navigateByParagraph(direction) {
+    if (!ttsState.sentences.length) return;
+    const currentSpan = ttsState.sentences[ttsState.index];
+    if (!currentSpan) return;
+    const PARA_SEL = 'p, li, blockquote, h1, h2, h3, h4';
+    const allParas = Array.from(transcriptEl.querySelectorAll(PARA_SEL))
+      .filter(p => p.querySelector('.ts-sentence'));
+    if (!allParas.length) return;
+    const currentPara = currentSpan.closest(PARA_SEL);
+    const pIdx = allParas.indexOf(currentPara);
+    if (pIdx < 0) return;
+    let targetPara = null;
+    if (direction > 0) {
+      if (pIdx + 1 < allParas.length) targetPara = allParas[pIdx + 1];
+    } else {
+      const firstSentenceOfCurrent = currentPara.querySelector('.ts-sentence');
+      if (currentSpan !== firstSentenceOfCurrent) {
+        targetPara = currentPara; // restart current paragraph
+      } else if (pIdx > 0) {
+        targetPara = allParas[pIdx - 1];
+      }
+    }
+    if (!targetPara) return;
+    const targetSpan = targetPara.querySelector('.ts-sentence');
+    if (!targetSpan) return;
+    const newIdx = ttsState.sentences.indexOf(targetSpan);
+    if (newIdx < 0) return;
+    startReading(newIdx);
+  }
   ['prevBtn','prevBtn2'].forEach(i => bindControl(i, goPrev));
   ['nextBtn','nextBtn2'].forEach(i => bindControl(i, goNext));
   ['back15Btn','back15Btn2'].forEach(i => bindControl(i, back15));

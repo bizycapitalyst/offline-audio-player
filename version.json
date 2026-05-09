@@ -1,5 +1,5 @@
 {
-  "version": "1.8.5",
+  "version": "1.8.6",
   "released": "2026-05-07",
-  "notes": "Track dropdown selector now uses the theme's blue palette — soft-blue background, blue text, blue-tinted border, and the chevron arrow recolored to match. Focus ring also blue. Other selects (TTS voice picker) are unchanged."
+  "notes": "Skip buttons are now track-aware. Audio tracks (and audio+transcript pairs) keep the existing −15s / +15s time-jump behavior. Text-only tracks (the ones playing via TTS) switch to −¶ / +¶ paragraph navigation: forward jumps to the first sentence of the next <p>/<li>/<blockquote>; back jumps to the start of the current paragraph if mid-way through, otherwise to the previous paragraph. Button labels and tooltips update on each track load to match the active mode."
 }
