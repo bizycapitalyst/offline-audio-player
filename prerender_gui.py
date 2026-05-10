@@ -525,7 +525,7 @@ class App:
         ttk.Button(row4, text="Reset", command=self._reset_output).pack(side="left", padx=(4, 0))
 
         row5 = ttk.Frame(settings, style='Card.TFrame'); row5.pack(fill="x", padx=10, pady=(6, 10))
-        self.force_var = tk.BooleanVar(value=False)
+        self.force_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             row5, text="Re-render even if .mp3 already exists",
             variable=self.force_var,
@@ -537,7 +537,7 @@ class App:
 
         rowL1 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL1.pack(fill="x", padx=10, pady=6)
         ttk.Label(rowL1, text="Output:", width=10, style='Card.TLabel').pack(side="left")
-        self.lang_var = tk.StringVar(value="english")
+        self.lang_var = tk.StringVar(value="both")
         ttk.Radiobutton(
             rowL1, text="English only", variable=self.lang_var,
             value="english", command=self._on_lang_changed,
