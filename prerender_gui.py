@@ -537,7 +537,7 @@ class App:
 
         rowL1 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL1.pack(fill="x", padx=10, pady=6)
         ttk.Label(rowL1, text="Output:", width=10, style='Card.TLabel').pack(side="left")
-        self.lang_var = tk.StringVar(value="both")
+        self.lang_var = tk.StringVar(value="english")
         ttk.Radiobutton(
             rowL1, text="English only", variable=self.lang_var,
             value="english", command=self._on_lang_changed,
