@@ -84,6 +84,20 @@ build_exe.bat
 
 Produces `dist\TTS_Converter.exe` (~30–50 MB). Copy it anywhere; it runs standalone.
 
+### Audio → Text (Speech-to-Text)
+
+The TTS Converter GUI / `.exe` has a second tab — **Audio → Text** — that runs the reverse direction: transcribe `.mp3` / `.wav` / `.m4a` / etc. into a `.txt` file. Powered by **faster-whisper** (open-source OpenAI Whisper on CTranslate2 — free, no API key, runs locally on CPU).
+
+| Setting | Options | Notes |
+|---|---|---|
+| Model | `tiny-en` (39 MB) / `base-en` (74 MB, default) / `small-en` (244 MB) / `medium-en` (769 MB) / multilingual variants | First use of each model downloads to `~/.cache/huggingface/hub/`; cached after that. English-only (`-en`) models are slightly better + faster on English audio. |
+| Language | English / Spanish / Auto-detect | Auto-detect requires a multilingual model (the non-`-en` variants). |
+| Translate to English | checkbox | Only meaningful when the source language is non-English. Uses Whisper's built-in translate task. Auto-selects a multilingual model. |
+| Output | `.txt` next to the audio file (default), or pick a folder | `name.txt` for plain transcribe; `name.en.txt` for translated-to-English; `name.es.txt` for Spanish source. |
+| Re-transcribe even if .txt exists | checkbox (on by default) | |
+
+Performance: `base-en` on CPU runs roughly 5–10× realtime, so a 10-minute audio takes ~1–2 minutes. The first run also includes a one-time model download (74 MB for `base-en`).
+
 ### English → Latin American Spanish translation
 
 Each entry point can output **English only** (default), **Spanish only** (translated), or **Both**. Spanish output uses Microsoft Edge's Latin American neural voices (Mexican by default — the most "neutral" LatAm dialect). Translation runs through `deep-translator`'s Google backend (free, no API key, needs internet at convert time only).

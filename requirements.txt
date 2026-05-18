@@ -10,6 +10,11 @@ beautifulsoup4>=4.12  # .epub HTML cleanup
 # English -> Latin American Spanish translation (used when --lang is spanish or both)
 deep-translator>=1.11.0
 
+# Speech-to-text (Audio -> Text tab in the GUI). faster-whisper is an
+# open-source local Whisper implementation — no API key, runs on CPU.
+# Models auto-download to ~/.cache/huggingface/hub/ on first use.
+faster-whisper>=1.0.0
+
 # Drag-and-drop in the Tkinter GUI (optional — file picker works without it)
 tkinterdnd2>=0.3.0; sys_platform != "darwin"
 

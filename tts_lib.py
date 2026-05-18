@@ -287,6 +287,122 @@ def discover_unrendered(folder: Path, force: bool = False) -> list[Path]:
 
 
 # ============================================================================
+# Speech-to-text (audio → text) via faster-whisper
+# ============================================================================
+# faster-whisper is an open-source reimplementation of OpenAI's Whisper on
+# top of CTranslate2 — same models, no PyTorch dependency, runs entirely
+# locally on CPU. The first time a given model name is requested it's
+# downloaded from HuggingFace to ~/.cache/huggingface/hub/ (74 MB for
+# base.en, 244 MB for small.en, etc.). After that it's cached and offline.
+
+# Curated model presets. Each entry maps a friendly alias to the model name
+# faster-whisper understands. ".en" variants are English-specialized
+# (slightly better English quality + faster). Multilingual variants
+# (no .en) are needed for Spanish / translate-to-English / auto-detect.
+WHISPER_MODELS = {
+    # English-specialized — use when you know the audio is English
+    "tiny-en":   "tiny.en",         #   39 MB  fastest, lower quality
+    "base-en":   "base.en",         #   74 MB  balanced (default)
+    "small-en":  "small.en",        #  244 MB  better quality
+    "medium-en": "medium.en",       #  769 MB  high quality, slow
+    # Multilingual — needed for Spanish or auto-detect
+    "tiny":      "tiny",            #   39 MB
+    "base":      "base",            #   74 MB
+    "small":     "small",           #  244 MB
+    "medium":    "medium",          #  769 MB
+    "large":     "large-v3",        # 1550 MB  best quality (slow)
+}
+
+DEFAULT_WHISPER_MODEL = "base.en"
+
+# Cache of loaded WhisperModel instances. Loading a model is slow
+# (5-30s depending on size), so we keep them alive between calls.
+_whisper_cache: dict = {}
+
+
+def transcribe_audio(
+    audio_path: Path,
+    model_name: str = DEFAULT_WHISPER_MODEL,
+    language: Optional[str] = "en",
+    translate_to_english: bool = False,
+    on_progress: Optional[callable] = None,
+) -> str:
+    """Transcribe an audio file to text.
+
+    Args:
+        audio_path: path to an audio file (mp3 / wav / m4a / ogg / flac / etc.)
+        model_name: faster-whisper model — pass an alias from WHISPER_MODELS
+            (e.g. 'base-en') or a full name (e.g. 'base.en'). Defaults to
+            base.en which is a good speed/quality trade-off for English.
+        language: ISO 639-1 language code of the source audio ('en', 'es',
+            …) or None to auto-detect. English-only models (the .en
+            variants) ignore this and always expect English audio.
+        translate_to_english: if True, output is translated to English
+            regardless of source language. Requires a multilingual model
+            (NOT the .en variants). Uses Whisper's built-in 'translate'
+            task — quality is decent for major languages but won't beat
+            a dedicated translation service.
+        on_progress: optional callback receiving (percent_done, 100) as
+            the transcription progresses. Whisper streams segments; we
+            map each segment's end timestamp against total duration.
+
+    Returns: the full transcribed text, one segment per line.
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as e:
+        raise MissingDependencyError(
+            "faster-whisper not installed. Run: pip install faster-whisper"
+        ) from e
+
+    # Resolve alias → full model name
+    full_name = WHISPER_MODELS.get(model_name, model_name)
+
+    # English-only models can't translate or handle non-English audio. If
+    # the caller asked for that combo, warn-by-fallback to a multilingual
+    # equivalent.
+    if (translate_to_english or (language and language != "en")) and full_name.endswith(".en"):
+        # Strip ".en" suffix to use the multilingual sibling
+        full_name = full_name[:-3]
+
+    if full_name not in _whisper_cache:
+        # int8 quantization runs well on CPU and is plenty good for speech
+        _whisper_cache[full_name] = WhisperModel(
+            full_name, device="cpu", compute_type="int8",
+        )
+    model = _whisper_cache[full_name]
+
+    task = "translate" if translate_to_english else "transcribe"
+
+    # beam_size=1 is faster than the default 5 with only marginal quality
+    # loss for clear speech. VAD (voice activity detection) is deliberately
+    # left off here: enabling it pulls in onnxruntime + the Silero VAD
+    # model (~150 MB extra in the bundled .exe) for a modest quality win
+    # on audio with long silent sections. Users with such content can
+    # trim silences in a separate step.
+    segments_iter, info = model.transcribe(
+        str(audio_path),
+        language=language,
+        task=task,
+        beam_size=1,
+        vad_filter=False,
+    )
+
+    duration = float(getattr(info, "duration", 0.0) or 0.0)
+    parts: list[str] = []
+    for seg in segments_iter:
+        text = (seg.text or "").strip()
+        if text:
+            parts.append(text)
+        if on_progress and duration > 0:
+            pct = min(100, max(0, int((seg.end / duration) * 100)))
+            on_progress(pct, 100)
+    if on_progress:
+        on_progress(100, 100)
+    return "\n".join(parts)
+
+
+# ============================================================================
 # Convenience: list all available voices (delegates to edge-tts)
 # ============================================================================
 

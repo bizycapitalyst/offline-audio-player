@@ -89,12 +89,21 @@ REM --collect-submodules: pull in everything from packages with dynamic imports
     --hidden-import deep_translator.google ^
     --hidden-import deep_translator.constants ^
     --hidden-import deep_translator.exceptions ^
+    --hidden-import faster_whisper ^
+    --hidden-import ctranslate2 ^
+    --hidden-import tokenizers ^
+    --hidden-import huggingface_hub ^
+    --hidden-import av ^
     --collect-submodules edge_tts ^
     --collect-submodules docx ^
     --collect-submodules pypdf ^
     --collect-submodules ebooklib ^
     --collect-submodules deep_translator ^
+    --collect-all faster_whisper ^
+    --collect-all ctranslate2 ^
     --collect-data certifi ^
+    --exclude-module onnxruntime ^
+    --exclude-module onnxruntime_extensions ^
     prerender_gui.py
 
 if errorlevel 1 (

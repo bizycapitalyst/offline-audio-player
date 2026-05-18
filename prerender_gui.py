@@ -187,6 +187,108 @@ class _Worker:
 
 
 # ============================================================================
+# Audio → Text worker (faster-whisper based)
+# ============================================================================
+# Mirror of _Worker above but for the speech-to-text direction. Loads
+# Whisper models lazily (the first call to transcribe blocks for a few
+# seconds while the model downloads or loads from cache) and streams
+# percent-complete progress per segment.
+
+class _TranscribeWorker:
+    def __init__(self):
+        self.q: queue.Queue = queue.Queue()
+        self.thread: threading.Thread | None = None
+        self.cancel_flag = threading.Event()
+
+    def is_running(self) -> bool:
+        return bool(self.thread and self.thread.is_alive())
+
+    def cancel(self):
+        self.cancel_flag.set()
+
+    def start(self, files, model_name, language, translate, output_dir, force):
+        if self.is_running():
+            return False
+        self.cancel_flag.clear()
+        self.thread = threading.Thread(
+            target=self._run,
+            args=(files, model_name, language, translate, output_dir, force),
+            daemon=True,
+        )
+        self.thread.start()
+        return True
+
+    def _run(self, files, model_name, language, translate, output_dir, force):
+        try:
+            self._do_all(files, model_name, language, translate, output_dir, force)
+        except Exception as e:
+            self.q.put(("error", f"unexpected: {e}"))
+        finally:
+            self.q.put(("done", None))
+
+    def _do_all(self, files, model_name, language, translate, output_dir, force):
+        total = len(files)
+        # Surface the slow "loading model" step so the user sees something
+        # happening even before any audio gets processed.
+        self.q.put(("status", f"loading whisper model: {model_name}…"))
+        for idx, src_path in enumerate(files, start=1):
+            if self.cancel_flag.is_set():
+                self.q.put(("cancelled", None))
+                return
+            src = Path(src_path)
+            dst_dir = output_dir if output_dir else src.parent
+            # Use ".en.txt" suffix for explicit English transcription, no
+            # suffix for default. Translate-to-English path uses ".en.txt"
+            # so it's distinguishable from same-language transcription.
+            if translate:
+                dst = dst_dir / (src.stem + ".en.txt")
+            elif language and language != "en":
+                dst = dst_dir / (src.stem + f".{language}.txt")
+            else:
+                dst = dst_dir / (src.stem + ".txt")
+
+            if dst.exists() and not force:
+                self.q.put(("skip", f"{src.name} → {dst.name} already exists"))
+                continue
+
+            self.q.put(("progress", {
+                "i": idx, "total": total, "src": src.name, "phase": "transcribe", "pct": 0,
+            }))
+
+            # Per-segment progress: faster-whisper streams segments as the
+            # decoder processes them; on_progress fires per segment with a
+            # (percent, 100) tuple based on segment end vs total duration.
+            def _on_pct(p, _t, _i=idx, _total=total, _name=src.name):
+                if self.cancel_flag.is_set():
+                    return
+                self.q.put(("progress", {
+                    "i": _i, "total": _total, "src": _name,
+                    "phase": "transcribe", "pct": p,
+                }))
+
+            try:
+                text = tts_lib.transcribe_audio(
+                    src,
+                    model_name=model_name,
+                    language=(None if language == "auto" else language),
+                    translate_to_english=translate,
+                    on_progress=_on_pct,
+                )
+            except tts_lib.MissingDependencyError as e:
+                self.q.put(("error", f"{src.name}: {e}"))
+                return  # missing dep affects all files, stop
+            except Exception as e:
+                self.q.put(("error", f"{src.name}: transcribe failed — {e}"))
+                continue
+
+            try:
+                dst.write_text(text, encoding="utf-8")
+                self.q.put(("ok", f"{src.name} → {dst.name}"))
+            except Exception as e:
+                self.q.put(("error", f"{src.name}: write failed — {e}"))
+
+
+# ============================================================================
 # Tk app
 # ============================================================================
 
@@ -199,9 +301,15 @@ class App:
         self._set_window_icon()
         self._apply_theme()
 
+        # ---- Text → Audio state ----
         self.files: list[str] = []
         self.output_dir: Path | None = None
         self.worker = _Worker(on_message=self._on_worker_message)
+
+        # ---- Audio → Text state ----
+        self.a2t_files: list[str] = []
+        self.a2t_output_dir: Path | None = None
+        self.a2t_worker = _TranscribeWorker()
 
         self._build_ui()
         # Size the window to fit the whole interface, or the screen height,
@@ -209,6 +317,7 @@ class App:
         # has reported its requested size to Tk's geometry manager.
         self._size_to_content()
         self._poll_queue()
+        self._a2t_poll_queue()
 
     def _size_to_content(self):
         """Open the window at min(natural-content-height, available-screen-height).
@@ -411,29 +520,73 @@ class App:
         style.map('Vertical.TScrollbar',
                   background=[('active', T['bg_hover'])])
 
+        # Notebook (tab strip across the top of the window)
+        style.configure('TNotebook',
+                        background=T['bg'],
+                        borderwidth=0, tabmargins=(0, 0, 0, 0))
+        style.configure('TNotebook.Tab',
+                        background=T['bg_card'],
+                        foreground=T['text_dim'],
+                        padding=(18, 9),
+                        borderwidth=0,
+                        font=('Segoe UI', 9, 'bold'))
+        style.map('TNotebook.Tab',
+                  background=[('selected', T['bg_tile']),
+                              ('active',   T['bg_hover'])],
+                  foreground=[('selected', T['accent']),
+                              ('active',   T['text'])],
+                  expand=[('selected', (1, 1, 1, 0))])
+
     # -- UI construction --
 
     def _build_ui(self):
-        pad = {"padx": 12, "pady": 6}
         T = self._theme
-
-        # Header
+        # Header outside the notebook
         header = ttk.Frame(self.root)
-        header.pack(fill="x", padx=12, pady=(12, 8))
+        header.pack(fill="x", padx=14, pady=(14, 4))
         ttk.Label(
             header, text=APP_TITLE,
             font=("Segoe UI", 15, "bold"),
             background=T['bg'], foreground=T['text'],
         ).pack(side="left")
+        # Subtitle gets set by the active tab so it reads
+        # "Convert text → MP3" or "Transcribe MP3 → text"
+        self.subtitle_var = tk.StringVar(value="Convert .txt / .md / .docx / .pdf / .epub  →  .mp3")
         ttk.Label(
-            header,
-            text="Convert .txt / .md / .docx / .pdf / .epub  →  .mp3",
+            header, textvariable=self.subtitle_var,
             background=T['bg'], foreground=T['text_dim'],
             font=("Segoe UI", 9),
         ).pack(side="left", padx=(12, 0))
 
+        # Notebook holding the two mode tabs
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+        t2a_tab = ttk.Frame(self.notebook)
+        a2t_tab = ttk.Frame(self.notebook)
+        self.notebook.add(t2a_tab, text="  Text → Audio  ")
+        self.notebook.add(a2t_tab, text="  Audio → Text  ")
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+        self._build_text_to_audio_tab(t2a_tab)
+        self._build_audio_to_text_tab(a2t_tab)
+
+    def _on_tab_changed(self, _evt=None):
+        """Update the subtitle in the header based on which tab is active."""
+        idx = self.notebook.index(self.notebook.select())
+        self.subtitle_var.set([
+            "Convert .txt / .md / .docx / .pdf / .epub  →  .mp3",
+            "Transcribe audio (.mp3, .wav, .m4a, .ogg, …)  →  .txt",
+        ][idx])
+
+    def _build_text_to_audio_tab(self, parent):
+        """Build the original Text → Audio interface inside the given tab
+        frame. Identical to what _build_ui used to do, just rooted on the
+        tab Frame rather than the toplevel window."""
+        pad = {"padx": 12, "pady": 6}
+        T = self._theme
+
         # Files list with drop target
-        files_frame = ttk.LabelFrame(self.root, text="Files to convert")
+        files_frame = ttk.LabelFrame(parent, text="Files to convert")
         files_frame.pack(fill="both", expand=True, **pad)
 
         list_wrap = ttk.Frame(files_frame, style='Card.TFrame')
@@ -470,7 +623,7 @@ class App:
             ).pack(side="right")
 
         # Settings
-        settings = ttk.LabelFrame(self.root, text="Voice & pacing")
+        settings = ttk.LabelFrame(parent, text="Voice & pacing")
         settings.pack(fill="x", **pad)
 
         row1 = ttk.Frame(settings, style='Card.TFrame'); row1.pack(fill="x", padx=10, pady=6)
@@ -532,7 +685,7 @@ class App:
         ).pack(side="left")
 
         # Output language (English / Spanish translation / Both)
-        lang_frame = ttk.LabelFrame(self.root, text="Output language")
+        lang_frame = ttk.LabelFrame(parent, text="Output language")
         lang_frame.pack(fill="x", **pad)
 
         rowL1 = ttk.Frame(lang_frame, style='Card.TFrame'); rowL1.pack(fill="x", padx=10, pady=6)
@@ -588,7 +741,7 @@ class App:
         self._on_lang_changed()
 
         # Action bar — primary CTA uses the amber accent style
-        actions = ttk.Frame(self.root)
+        actions = ttk.Frame(parent)
         actions.pack(fill="x", **pad)
         self.go_btn = ttk.Button(
             actions, text="Convert all", command=self._on_convert,
@@ -603,7 +756,7 @@ class App:
         self.progress.pack(side="left", fill="x", expand=True, padx=(12, 0))
 
         # Log
-        log_frame = ttk.LabelFrame(self.root, text="Log")
+        log_frame = ttk.LabelFrame(parent, text="Log")
         log_frame.pack(fill="both", expand=True, **pad)
         self.log = tk.Text(
             log_frame, height=8, state="disabled", wrap="none",
@@ -614,6 +767,136 @@ class App:
             font=self._mono_font,
         )
         self.log.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # ------------------------------------------------------------------
+    # Audio → Text tab
+    # ------------------------------------------------------------------
+
+    def _build_audio_to_text_tab(self, parent):
+        """Build the speech-to-text panel in the second tab."""
+        pad = {"padx": 12, "pady": 6}
+        T = self._theme
+
+        # Files list (audio inputs)
+        files_frame = ttk.LabelFrame(parent, text="Audio files to transcribe")
+        files_frame.pack(fill="both", expand=True, **pad)
+
+        list_wrap = ttk.Frame(files_frame, style='Card.TFrame')
+        list_wrap.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+        scroll = ttk.Scrollbar(list_wrap, orient="vertical")
+        scroll.pack(side="right", fill="y")
+        self.a2t_file_list = tk.Listbox(
+            list_wrap, yscrollcommand=scroll.set,
+            selectmode="extended", activestyle="none",
+            bg=T['bg_tile'], fg=T['text'],
+            selectbackground=T['accent'], selectforeground=T['accent_ink'],
+            borderwidth=0, highlightthickness=0,
+            font=self._ui_font,
+        )
+        self.a2t_file_list.pack(side="left", fill="both", expand=True)
+        scroll.config(command=self.a2t_file_list.yview)
+
+        if _HAS_DND:
+            self.a2t_file_list.drop_target_register(DND_FILES)
+            self.a2t_file_list.dnd_bind("<<Drop>>", self._a2t_on_drop)
+
+        btns = ttk.Frame(files_frame, style='Card.TFrame')
+        btns.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btns, text="Add files…", command=self._a2t_pick_files).pack(side="left")
+        ttk.Button(btns, text="Add folder…", command=self._a2t_pick_folder).pack(side="left", padx=(6, 0))
+        ttk.Button(btns, text="Remove selected", command=self._a2t_remove_selected).pack(side="left", padx=(6, 0))
+        ttk.Button(btns, text="Clear", command=self._a2t_clear).pack(side="left", padx=(6, 0))
+        if _HAS_DND:
+            ttk.Label(
+                btns, text="tip: drag audio files or folders onto the list",
+                background=T['bg_card'], foreground=T['text_dim'],
+                font=("Segoe UI", 8, "italic"),
+            ).pack(side="right")
+
+        # Whisper model + language settings
+        settings = ttk.LabelFrame(parent, text="Recognition settings")
+        settings.pack(fill="x", **pad)
+
+        r1 = ttk.Frame(settings, style='Card.TFrame'); r1.pack(fill="x", padx=10, pady=6)
+        ttk.Label(r1, text="Model:", width=10, style='Card.TLabel').pack(side="left")
+        self.a2t_model_var = tk.StringVar(value="base-en")
+        # Sort the catalog so English variants come first.
+        model_choices = [a for a in tts_lib.WHISPER_MODELS if a.endswith("-en")] + \
+                        [a for a in tts_lib.WHISPER_MODELS if not a.endswith("-en")]
+        self.a2t_model_combo = ttk.Combobox(
+            r1, textvariable=self.a2t_model_var,
+            values=model_choices, state="readonly", width=14,
+        )
+        self.a2t_model_combo.pack(side="left")
+        ttk.Label(
+            r1,
+            text="  base-en (74 MB) downloads on first use; cached after",
+            style='Dim.TLabel',
+        ).pack(side="left", padx=(8, 0))
+
+        r2 = ttk.Frame(settings, style='Card.TFrame'); r2.pack(fill="x", padx=10, pady=6)
+        ttk.Label(r2, text="Language:", width=10, style='Card.TLabel').pack(side="left")
+        self.a2t_lang_var = tk.StringVar(value="en")
+        for label, value in [("English", "en"), ("Spanish", "es"), ("Auto-detect", "auto")]:
+            ttk.Radiobutton(
+                r2, text=label, variable=self.a2t_lang_var, value=value,
+                command=self._a2t_on_lang_changed,
+            ).pack(side="left", padx=(0, 12))
+
+        r3 = ttk.Frame(settings, style='Card.TFrame'); r3.pack(fill="x", padx=10, pady=6)
+        self.a2t_translate_var = tk.BooleanVar(value=False)
+        self.a2t_translate_chk = ttk.Checkbutton(
+            r3,
+            text="Translate to English  (only meaningful with non-English source — uses a multilingual model)",
+            variable=self.a2t_translate_var,
+        )
+        self.a2t_translate_chk.pack(side="left")
+
+        r4 = ttk.Frame(settings, style='Card.TFrame'); r4.pack(fill="x", padx=10, pady=6)
+        ttk.Label(r4, text="Output:", width=10, style='Card.TLabel').pack(side="left")
+        self.a2t_output_var = tk.StringVar(value="(same folder as each source file)")
+        ttk.Entry(r4, textvariable=self.a2t_output_var, state="readonly").pack(
+            side="left", fill="x", expand=True,
+        )
+        ttk.Button(r4, text="Pick…", command=self._a2t_pick_output).pack(side="left", padx=(6, 0))
+        ttk.Button(r4, text="Reset", command=self._a2t_reset_output).pack(side="left", padx=(4, 0))
+
+        r5 = ttk.Frame(settings, style='Card.TFrame'); r5.pack(fill="x", padx=10, pady=(6, 10))
+        self.a2t_force_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            r5, text="Re-transcribe even if .txt already exists",
+            variable=self.a2t_force_var,
+        ).pack(side="left")
+
+        # Action bar
+        actions = ttk.Frame(parent)
+        actions.pack(fill="x", **pad)
+        self.a2t_go_btn = ttk.Button(
+            actions, text="Transcribe all", command=self._a2t_on_convert,
+            style='Accent.TButton',
+        )
+        self.a2t_go_btn.pack(side="left")
+        self.a2t_cancel_btn = ttk.Button(
+            actions, text="Cancel", command=self._a2t_on_cancel, state="disabled",
+        )
+        self.a2t_cancel_btn.pack(side="left", padx=(8, 0))
+        self.a2t_progress = ttk.Progressbar(actions, mode="determinate")
+        self.a2t_progress.pack(side="left", fill="x", expand=True, padx=(12, 0))
+
+        # Log
+        log_frame = ttk.LabelFrame(parent, text="Log")
+        log_frame.pack(fill="both", expand=True, **pad)
+        self.a2t_log = tk.Text(
+            log_frame, height=8, state="disabled", wrap="none",
+            bg=T['bg_tile'], fg=T['text_mid'],
+            insertbackground=T['accent'],
+            selectbackground=T['accent'], selectforeground=T['accent_ink'],
+            borderwidth=0, highlightthickness=0,
+            font=self._mono_font,
+        )
+        self.a2t_log.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self._a2t_on_lang_changed()
 
     # -- event handlers --
 
@@ -830,6 +1113,174 @@ class App:
         self.log.insert("end", msg + "\n")
         self.log.see("end")
         self.log.configure(state="disabled")
+
+    # ------------------------------------------------------------------
+    # Audio → Text event handlers + helpers
+    # ------------------------------------------------------------------
+
+    # Audio file extensions accepted in the a2t tab (matches what the
+    # audio_player PWA recognizes, plus the few formats Whisper handles
+    # cleanly).
+    A2T_AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".ogg", ".oga", ".opus",
+                      ".flac", ".aac", ".webm", ".mp4"}
+
+    def _a2t_log(self, msg: str):
+        self.a2t_log.configure(state="normal")
+        self.a2t_log.insert("end", msg + "\n")
+        self.a2t_log.see("end")
+        self.a2t_log.configure(state="disabled")
+
+    def _a2t_on_drop(self, event):
+        # Same braced-path parser as the t2a tab.
+        raw = event.data
+        paths: list[str] = []
+        i = 0
+        while i < len(raw):
+            if raw[i] == "{":
+                end = raw.index("}", i)
+                paths.append(raw[i + 1:end])
+                i = end + 1
+            elif raw[i] == " ":
+                i += 1
+            else:
+                end = raw.find(" ", i)
+                if end == -1:
+                    paths.append(raw[i:])
+                    break
+                paths.append(raw[i:end])
+                i = end + 1
+        self._a2t_add_paths(paths)
+
+    def _a2t_pick_files(self):
+        types = [
+            ("Audio files", "*.mp3 *.m4a *.wav *.ogg *.oga *.opus *.flac *.aac *.webm *.mp4"),
+            ("All files", "*.*"),
+        ]
+        picked = filedialog.askopenfilenames(title="Pick audio files", filetypes=types)
+        if picked:
+            self._a2t_add_paths(list(picked))
+
+    def _a2t_pick_folder(self):
+        folder = filedialog.askdirectory(title="Pick a folder of audio")
+        if folder:
+            self._a2t_add_paths([folder])
+
+    def _a2t_add_paths(self, paths: list[str]):
+        added = 0
+        for p in paths:
+            path = Path(p)
+            if path.is_dir():
+                for sub in sorted(path.rglob("*")):
+                    if sub.is_file() and sub.suffix.lower() in self.A2T_AUDIO_EXTS:
+                        if str(sub) not in self.a2t_files:
+                            self.a2t_files.append(str(sub))
+                            self.a2t_file_list.insert("end", str(sub))
+                            added += 1
+            elif path.is_file():
+                if path.suffix.lower() not in self.A2T_AUDIO_EXTS:
+                    self._a2t_log(f"skipped (not audio): {path.name}")
+                    continue
+                if str(path) not in self.a2t_files:
+                    self.a2t_files.append(str(path))
+                    self.a2t_file_list.insert("end", str(path))
+                    added += 1
+        if added:
+            self._a2t_log(f"added {added} file(s)  (total: {len(self.a2t_files)})")
+
+    def _a2t_remove_selected(self):
+        for idx in reversed(list(self.a2t_file_list.curselection())):
+            self.a2t_file_list.delete(idx)
+            del self.a2t_files[idx]
+
+    def _a2t_clear(self):
+        self.a2t_file_list.delete(0, "end")
+        self.a2t_files.clear()
+
+    def _a2t_pick_output(self):
+        folder = filedialog.askdirectory(title="Pick an output folder")
+        if folder:
+            self.a2t_output_dir = Path(folder)
+            self.a2t_output_var.set(folder)
+
+    def _a2t_reset_output(self):
+        self.a2t_output_dir = None
+        self.a2t_output_var.set("(same folder as each source file)")
+
+    def _a2t_on_lang_changed(self, _evt=None):
+        """When the source language is anything other than English, surface
+        the translate-to-English option more clearly. With language=en the
+        translate option is meaningless (Whisper can't translate English
+        to English), so disable it."""
+        lang = self.a2t_lang_var.get()
+        if lang == "en":
+            self.a2t_translate_chk.configure(state="disabled")
+            self.a2t_translate_var.set(False)
+        else:
+            self.a2t_translate_chk.configure(state="normal")
+
+    def _a2t_on_convert(self):
+        if self.a2t_worker.is_running():
+            return
+        if not self.a2t_files:
+            messagebox.showinfo(APP_TITLE, "Add some audio files first.")
+            return
+        model_alias = self.a2t_model_var.get()
+        model_name = tts_lib.WHISPER_MODELS.get(model_alias, model_alias)
+        lang = self.a2t_lang_var.get()
+        translate = self.a2t_translate_var.get()
+        files = list(self.a2t_files)
+        self.a2t_progress.configure(maximum=len(files) * 100, value=0)
+        self._a2t_log(
+            f"--- starting {len(files)} file(s) — model={model_name} "
+            f"lang={lang} translate_to_english={translate}"
+        )
+        self.a2t_go_btn.configure(state="disabled")
+        self.a2t_cancel_btn.configure(state="normal")
+        self.a2t_worker.start(
+            files, model_name, lang, translate,
+            self.a2t_output_dir, self.a2t_force_var.get(),
+        )
+
+    def _a2t_on_cancel(self):
+        if self.a2t_worker.is_running():
+            self.a2t_worker.cancel()
+            self._a2t_log("--- cancel requested; finishing current file then stopping…")
+
+    def _a2t_poll_queue(self):
+        try:
+            while True:
+                kind, payload = self.a2t_worker.q.get_nowait()
+                self._a2t_handle_message(kind, payload)
+        except queue.Empty:
+            pass
+        self.root.after(120, self._a2t_poll_queue)
+
+    def _a2t_handle_message(self, kind, payload):
+        if kind == "status":
+            self._a2t_log(f"  {payload}")
+        elif kind == "progress":
+            i, total, src, phase, pct = (
+                payload["i"], payload["total"], payload["src"],
+                payload["phase"], payload.get("pct", 0),
+            )
+            # Map (file-index-1 * 100) + pct  → progress bar
+            self.a2t_progress.configure(value=(i - 1) * 100 + pct)
+            # Only log on the first hit per file (pct==0) to avoid spam
+            if pct == 0:
+                self._a2t_log(f"[{i}/{total}] {phase}: {src}")
+        elif kind == "ok":
+            self._a2t_log(f"  ✓ {payload}")
+        elif kind == "skip":
+            self._a2t_log(f"  skip: {payload}")
+        elif kind == "error":
+            self._a2t_log(f"  ! {payload}")
+        elif kind == "cancelled":
+            self._a2t_log("--- cancelled")
+        elif kind == "done":
+            self._a2t_log("--- done")
+            self.a2t_go_btn.configure(state="normal")
+            self.a2t_cancel_btn.configure(state="disabled")
+            self.a2t_progress.configure(value=self.a2t_progress.cget("maximum"))
 
     def run(self):
         self.root.mainloop()
