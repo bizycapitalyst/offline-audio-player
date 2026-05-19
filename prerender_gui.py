@@ -520,14 +520,16 @@ class App:
         style.map('Vertical.TScrollbar',
                   background=[('active', T['bg_hover'])])
 
-        # Notebook (tab strip across the top of the window)
+        # Notebook (tab strip across the top of the window). Inactive tabs
+        # are visibly smaller than the active one — selected tab gets ~2.5×
+        # the padding so it reads as the foreground "card" you're inside.
         style.configure('TNotebook',
                         background=T['bg'],
                         borderwidth=0, tabmargins=(0, 0, 0, 0))
         style.configure('TNotebook.Tab',
                         background=T['bg_card'],
                         foreground=T['text_dim'],
-                        padding=(18, 9),
+                        padding=(12, 5),
                         borderwidth=0,
                         font=('Segoe UI', 9, 'bold'))
         style.map('TNotebook.Tab',
@@ -535,6 +537,7 @@ class App:
                               ('active',   T['bg_hover'])],
                   foreground=[('selected', T['accent']),
                               ('active',   T['text'])],
+                  padding=[('selected', (28, 14))],
                   expand=[('selected', (1, 1, 1, 0))])
 
     # -- UI construction --
