@@ -639,13 +639,21 @@ class App:
         )
         self.voice_combo.pack(side="left")
         self.voice_combo.bind("<<ComboboxSelected>>", self._on_voice_changed)
+        # Custom-voice override: only shows up when the user picks
+        # '(custom)' from the dropdown. Hidden entirely otherwise so
+        # the Voice row stays clean. When it appears it carries a
+        # "Custom name:" label so its purpose is self-evident.
+        self.custom_voice_wrap = ttk.Frame(row1, style='Card.TFrame')
+        ttk.Label(
+            self.custom_voice_wrap, text="Custom name:",
+            style='Dim.TLabel',
+        ).pack(side="left", padx=(0, 6))
         self.custom_voice_var = tk.StringVar()
         self.custom_voice_entry = ttk.Entry(
-            row1, textvariable=self.custom_voice_var, width=24,
+            self.custom_voice_wrap, textvariable=self.custom_voice_var, width=24,
         )
-        self.custom_voice_entry.pack(side="left", padx=(6, 0))
-        self.custom_voice_entry.insert(0, "")
-        self.custom_voice_entry.configure(state="disabled")
+        self.custom_voice_entry.pack(side="left")
+        # Not packed at startup — _on_voice_changed reveals it when needed.
 
         row2 = ttk.Frame(settings, style='Card.TFrame'); row2.pack(fill="x", padx=10, pady=6)
         ttk.Label(row2, text="Rate:", width=10, style='Card.TLabel').pack(side="left")
@@ -905,10 +913,13 @@ class App:
 
     def _on_voice_changed(self, _evt=None):
         if self.voice_var.get() == "(custom)":
-            self.custom_voice_entry.configure(state="normal")
+            # Show the labeled "Custom name:" entry; focus it so the user
+            # can type immediately.
+            self.custom_voice_wrap.pack(side="left", padx=(10, 0))
             self.custom_voice_entry.focus_set()
         else:
-            self.custom_voice_entry.configure(state="disabled")
+            # Hide the wrap frame entirely — keeps the Voice row uncluttered.
+            self.custom_voice_wrap.pack_forget()
 
     def _on_lang_changed(self, _evt=None):
         """Show / hide the Spanish-specific controls based on the chosen
