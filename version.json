@@ -1,5 +1,5 @@
 {
-  "version": "1.9.5",
-  "released": "2026-05-09",
-  "notes": "Strip the temporary diagnostic instrumentation that was added in v1.9.3 / v1.9.4 to triage the background-pause issue. Removed: the 'Diagnostic log' details panel, the diagLog function and its localStorage capture, all event-listener instrumentation (audio play/pause/playing/waiting/stalled/suspend/emptied/error/loadstart/canplay/ended, visibilitychange, focus/blur, pageshow/pagehide, lifecycle freeze/resume), and inline diagLog() calls in loadTrack / playPause / autoplay path / TTS lifecycle. Samsung-help section retained as ongoing user guidance."
+  "version": "1.9.6",
+  "released": "2026-05-18",
+  "notes": "Split the folder-picker into two dedicated buttons. Previously the single Pick-folder button morphed into 'Resume previous folder' when a saved handle was waiting for permission, which was easy to miss. Now: 'Resume previous folder' is its own full-width button at the top of the folder card; 'Pick folder' + 'Rescan' sit below as before. Resume is disabled by default (when there's no saved folder history) and only enables when the startup auto-restore finds a saved handle in 'prompt' permission state. Tapping Resume re-grants permission via user gesture and silently loads; tapping Pick always opens the fresh picker without overloading semantics."
 }

@@ -835,6 +835,7 @@
         <span class="chevron" aria-hidden="true">›</span>
       </button>
       <div class="section-body" id="folderBody">
+      <button id="resumeFolderBtn" disabled style="width:100%; margin-bottom:8px;">Resume previous folder</button>
       <div class="row">
         <button class="primary" id="pickFolderBtn">Pick folder</button>
         <button id="rescanBtn" disabled>Rescan</button>
@@ -957,7 +958,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.5';
+const APP_VERSION = '1.9.6';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -988,6 +989,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   const $ = id => document.getElementById(id);
   const pickBtn = $('pickFolderBtn');
   const rescanBtn = $('rescanBtn');
+  const resumeBtn = $('resumeFolderBtn');
   const fallbackInput = $('fallbackInput');
   const folderStatus = $('folderStatus');
   const trackSelect = $('trackSelect');
@@ -1757,30 +1759,37 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   }
   function bindControl(id, handler){ const el = $(id); if (el) el.addEventListener('click', handler); }
 
-  pickBtn.addEventListener('click', async () => {
-    // If we have a saved folder handle from a previous session that just needs
-    // permission re-granted, try that first — the user clicking "Resume
-    // previous folder" satisfies the user-gesture requirement for requestPermission.
-    if (pendingHandle && pendingHandle.requestPermission){
-      try {
-        const perm = await pendingHandle.requestPermission({ mode: 'read' });
-        if (perm === 'granted'){
-          dirHandle = pendingHandle;
-          pendingHandle = null;
-          pickBtn.textContent = 'Pick folder';
-          rescanBtn.disabled = false;
-          await scanDir();
-          return;
-        }
-      } catch(_) {}
-      // Permission declined — clear and fall through to fresh picker.
-      pendingHandle = null;
-      pickBtn.textContent = 'Pick folder';
-      try { await idbDel(HANDLE_KEY); } catch(_) {}
-    }
+  // Pick folder: always fresh — no more "morph into Resume" overloading.
+  // The Resume affordance is now its own dedicated button below.
+  pickBtn.addEventListener('click', () => {
     if ('showDirectoryPicker' in window) pickWithFSAccess();
     else pickWithInput();
   });
+
+  // Resume previous folder: only enabled when a saved handle exists in
+  // IndexedDB from a prior session AND its permission state is 'prompt'
+  // (needs user-gesture re-grant). Disabled at startup with no history.
+  resumeBtn.addEventListener('click', async () => {
+    if (!pendingHandle || typeof pendingHandle.requestPermission !== 'function') return;
+    try {
+      const perm = await pendingHandle.requestPermission({ mode: 'read' });
+      if (perm === 'granted'){
+        dirHandle = pendingHandle;
+        pendingHandle = null;
+        resumeBtn.disabled = true;  // used up this session
+        rescanBtn.disabled = false;
+        setStatus('Restoring previous folder…');
+        await scanDir();
+        return;
+      }
+    } catch(_) {}
+    // Permission declined — drop the stale handle so we don't keep prompting.
+    pendingHandle = null;
+    resumeBtn.disabled = true;
+    try { await idbDel(HANDLE_KEY); } catch(_) {}
+    setStatus('Permission declined. Pick a folder instead.', 'warn');
+  });
+
   rescanBtn.addEventListener('click', () => { if (dirHandle) scanDir(); });
 
   // Selecting a track loads it but does NOT auto-play — the user explicitly
@@ -2269,8 +2278,10 @@ document.getElementById('appVersion').textContent = APP_VERSION;
       setStatus('Restoring previous folder…');
       await scanDir();
     } else if (perm === 'prompt'){
+      // Saved handle exists but needs permission re-grant via user gesture.
+      // Enable the dedicated Resume button (Pick stays its normal self).
       pendingHandle = handle;
-      pickBtn.textContent = 'Resume previous folder';
+      resumeBtn.disabled = false;
       setFolderExpanded(true);
       setFolderStepStatus('previous folder', 'good');
       setStatus('Tap "Resume previous folder" to restore the folder you used last time, or pick a new one.');
