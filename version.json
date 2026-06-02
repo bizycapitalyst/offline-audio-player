@@ -1,5 +1,5 @@
 {
-  "version": "1.9.6",
+  "version": "1.9.7",
   "released": "2026-05-18",
-  "notes": "Split the folder-picker into two dedicated buttons. Previously the single Pick-folder button morphed into 'Resume previous folder' when a saved handle was waiting for permission, which was easy to miss. Now: 'Resume previous folder' is its own full-width button at the top of the folder card; 'Pick folder' + 'Rescan' sit below as before. Resume is disabled by default (when there's no saved folder history) and only enables when the startup auto-restore finds a saved handle in 'prompt' permission state. Tapping Resume re-grants permission via user gesture and silently loads; tapping Pick always opens the fresh picker without overloading semantics."
+  "notes": "Player card now shows 'FROM <folder name>' tucked under the now-playing track title, so you can tell at a glance which folder the current audio is sourced from. The folder caption is set once when the folder loads (FS Access dirHandle.name on Chrome Android, or derived from webkitRelativePath on browsers that fall back to the multi-select picker) and stays visible for the whole session. Hidden entirely when no folder is loaded."
 }

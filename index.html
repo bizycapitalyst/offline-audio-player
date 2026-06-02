@@ -396,8 +396,28 @@
   .now-playing {
     font-size: 17px; font-weight: 600;
     letter-spacing: -0.01em;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+  /* Folder-name caption tucked under the now-playing track title.
+     Hidden entirely when empty so it doesn't claim vertical space. */
+  .now-playing-folder {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
     margin-bottom: 6px;
     word-break: break-word;
+    line-height: 1.4;
+  }
+  .now-playing-folder:empty { display: none; }
+  .now-playing-folder::before {
+    content: 'from ';
+    color: var(--text-dim);
+    opacity: 0.65;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-right: 4px;
   }
   .audio-state {
     font-size: 11px;
@@ -889,6 +909,7 @@
 
     <div class="card" id="playerCard">
       <div class="now-playing" id="nowPlaying">Nothing playing</div>
+      <div class="now-playing-folder" id="nowPlayingFolder"></div>
       <div class="audio-state" id="audioState"></div>
       <audio id="audioEl" controls preload="metadata" playsinline></audio>
       <div class="controls">
@@ -958,7 +979,7 @@
   </main>
 
 <script>
-const APP_VERSION = '1.9.6';
+const APP_VERSION = '1.9.7';
 // Same-origin: served by GitHub Pages, which propagates pushes within ~1 minute.
 // (raw.githubusercontent.com has 5–30 min CDN caching that no-store can't defeat,
 // which was causing the "Up to date" false-negative after a fresh push.)
@@ -996,6 +1017,10 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   const trackStepStatus = $('trackStepStatus');
   const audioEl = $('audioEl');
   const nowPlaying = $('nowPlaying');
+  const nowPlayingFolderEl = $('nowPlayingFolder');
+  function setNowPlayingFolder(name){
+    if (nowPlayingFolderEl) nowPlayingFolderEl.textContent = name || '';
+  }
   const transcriptEl = $('transcript');
   const transcriptCard = $('transcriptCard');
   const transcriptTitle = $('transcriptTitle');
@@ -1209,6 +1234,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
   async function scanDir(){
     if (!dirHandle) return;
     setStatus('Scanning…');
+    setNowPlayingFolder(dirHandle.name || '');
     const audioByBase = new Map(), textByBase = new Map();
     for await (const [name, entry] of dirHandle.entries()){
       if (entry.kind !== 'file') continue;
@@ -1230,6 +1256,16 @@ document.getElementById('appVersion').textContent = APP_VERSION;
     }
     dirHandle = null;
     rescanBtn.disabled = true;
+    // Derive folder name from the first file's webkitRelativePath
+    // (form: "FolderName/sub/file.mp3"). The picker only includes this
+    // when the user picked a directory, which is our case.
+    let folderName = '';
+    for (const f of files){
+      const rp = f.webkitRelativePath || '';
+      const slash = rp.indexOf('/');
+      if (slash > 0){ folderName = rp.slice(0, slash); break; }
+    }
+    setNowPlayingFolder(folderName);
     buildTrackList(audioByBase, textByBase);
   });
 
